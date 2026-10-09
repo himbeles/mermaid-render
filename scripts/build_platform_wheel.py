@@ -11,7 +11,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -66,24 +65,6 @@ def build(version: str, outdir: Path) -> Path:
     if len(wheels) != 1:
         raise RuntimeError(f"Expected exactly one newly built wheel, got: {wheels}")
     result = wheels[0]
-    if sys.platform == "linux":
-        # PyPI rejects linux_x86_64. Audit and vendor non-policy libraries
-        # before applying a manylinux tag; never just rename the wheel.
-        with tempfile.TemporaryDirectory(prefix="repaired-", dir=outdir) as repaired:
-            subprocess.run([
-                "uvx", "--from", "auditwheel==6.8.2", "auditwheel", "repair",
-                "--plat", "manylinux_2_39_x86_64", "--only-plat",
-                "--wheel-dir", repaired, str(result),
-            ], cwd=PROJECT, check=True)
-            repaired_wheels = list(Path(repaired).glob("*.whl"))
-            if len(repaired_wheels) != 1:
-                raise RuntimeError(f"Expected one repaired wheel, got: {repaired_wheels}")
-            final = outdir / repaired_wheels[0].name
-            repaired_wheels[0].replace(final)
-            result.unlink()
-            result = final
-        subprocess.run(["uvx", "--from", "auditwheel==6.8.2", "auditwheel", "show", str(result)],
-                       cwd=PROJECT, check=True)
     with ZipFile(result) as z:
         names = set(z.namelist())
         required = {

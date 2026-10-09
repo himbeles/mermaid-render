@@ -72,10 +72,6 @@ jobs:
         if: runner.os == 'Linux'
         run: uv run python -m playwright install-deps chromium
 
-      - name: Install Linux ELF repair tool
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y patchelf
-
       - name: Build wheel with Mermaid.js and Chromium Headless Shell
         shell: bash
         run: uv run python scripts/build_platform_wheel.py
@@ -132,9 +128,15 @@ jobs:
         with:
           version: "0.10.0"
           enable-cache: false
-      - uses: actions/download-artifact@v4
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v4
         with:
-          pattern: bundled-*
+          name: bundled-win_amd64
+          path: dist
+      - name: Download macOS wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bundled-macos-*
           path: dist
           merge-multiple: true
       - name: Check distribution metadata
@@ -148,8 +150,10 @@ jobs:
           from pathlib import Path
 
           wheels = list(Path("dist").glob("*.whl"))
-          if len(wheels) != 4:
-              raise SystemExit(f"Expected all four offline wheels, got {len(wheels)}")
+          if len(wheels) != 3:
+              raise SystemExit(f"Expected three Windows/macOS offline wheels, got {len(wheels)}")
+          if any("linux" in wheel.name for wheel in wheels):
+              raise SystemExit("Linux wheels are distributed through GitHub Releases only")
           limit = float(os.environ["PYPI_MAX_FILE_SIZE_MIB"]) * 1024**2
           for wheel in wheels:
               size = wheel.stat().st_size
