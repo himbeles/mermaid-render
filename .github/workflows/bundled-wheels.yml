@@ -1,0 +1,88 @@
+name: mermaid-render offline wheels
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            os: ubuntu-24.04
+            tag: linux_x86_64
+          - name: Windows x86-64
+            os: windows-2022
+            tag: win_amd64
+          - name: macOS Apple Silicon
+            os: macos-15
+            tag: macosx_15_0_arm64
+          - name: macOS Intel
+            os: macos-15-intel
+            tag: macosx_15_0_x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.0"
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # uv.lock can be committed once generated; until then uv sync resolves it.
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Install Linux Chromium system libraries
+        if: runner.os == 'Linux'
+        run: uv run python -m playwright install-deps chromium
+
+      - name: Build wheel with Mermaid.js and Chromium Headless Shell
+        shell: bash
+        run: uv run python scripts/build_platform_wheel.py --platform-tag "${{ matrix.tag }}"
+
+      - name: Run package tests using bundled Chromium
+        run: uv run pytest -q
+
+      - name: Test installed wheel without browser/runtime downloads
+        shell: bash
+        run: uv run python scripts/test_wheel_install.py dist/*.whl
+
+      - name: Publish wheel as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundled-${{ matrix.tag }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    name: Attach wheels to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: wheels
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundled-*
+          path: wheels
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: wheels/*.whl
+          fail_on_unmatched_files: true

@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+src/mermaid_visio/runtime/**
+!src/mermaid_visio/runtime/README.txt
+
+src/mermaid_visio/browsers/**
+!src/mermaid_visio/browsers/README.txt

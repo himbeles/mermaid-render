@@ -1,0 +1,37 @@
+[project]
+name = "mermaid-render"
+version = "0.6.0"
+description = "Render Mermaid diagrams to SVG, PNG, PDF or connected Visio VSDX"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Python port contributors" }]
+keywords = ["mermaid", "visio", "vsdx", "svg", "png", "pdf", "diagram"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+]
+dependencies = ["playwright==1.63.0"]
+
+[project.scripts]
+mermaid-render = "mermaid_render.cli:main"
+mermaid-render-fetch = "mermaid_render.vendor:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[build-system]
+requires = ["uv_build>=0.10.0,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "mermaid_render"
+source-include = ["tests/**", "examples/**", "scripts/**", ".python-version", ".gitignore"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
