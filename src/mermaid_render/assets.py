@@ -97,14 +97,14 @@ def install_browser(destination: Path) -> None:
 def _ensure(name: str, bundled: Path, target: Path, ready: Callable, install: Callable,
             *, persist: bool = False) -> Path:
     try:
-        found = ready(target) if persist else ready(bundled) or ready(target)
+        found = ready(target) or (None if persist else ready(bundled))
         if found:
             return found
         root = data_root()
         root.mkdir(parents=True, exist_ok=True)
         with FileLock(str(root / '.setup.lock'), timeout=360):
             # Another process may have finished while we waited for its lock.
-            found = ready(target) if persist else ready(bundled) or ready(target)
+            found = ready(target) or (None if persist else ready(bundled))
             if found:
                 return found
             target.parent.mkdir(parents=True, exist_ok=True)

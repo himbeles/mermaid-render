@@ -22,13 +22,13 @@ def main() -> None:
                                      epilog="Missing runtime files install automatically. Use mermaid-render setup to prepare them in advance.")
     parser.add_argument("input", type=Path, help="Mermaid .mmd/.mermaid file")
     parser.add_argument("-o", "--output", type=Path, help="Output .svg, .png, .pdf or .vsdx file")
-    parser.add_argument("-f", "--format", choices=["svg", "png", "pdf", "visio", "vsdx"], help="Output format (otherwise inferred from -o, default vsdx)")
+    parser.add_argument("-f", "--format", choices=["svg", "png", "pdf", "visio", "vsdx"], help="Output format (otherwise inferred from -o, default svg)")
     parser.add_argument("--title", help="Diagram title for Visio")
     parser.add_argument("--theme", default="default", help="Mermaid theme")
     parser.add_argument("--background", default="white", help="PNG/PDF background color or transparent (PNG)")
     parser.add_argument("--scale", type=float, default=1.0, help="PNG pixel density factor (default 1 = 96 dpi)")
     args = parser.parse_args()
-    fmt = args.format or (args.output.suffix.lower().lstrip(".") if args.output else "vsdx")
+    fmt = args.format or (args.output.suffix.lower().lstrip(".") if args.output else "svg")
     fmt = "vsdx" if fmt == "visio" else fmt
     if fmt not in {"svg", "png", "pdf", "vsdx"}:
         parser.error("output extension must be .svg, .png, .pdf or .vsdx")

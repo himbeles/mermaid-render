@@ -20,7 +20,7 @@ def roots(tmp_path, monkeypatch):
     return package, support
 
 
-def test_bundle_precedes_support_without_writing(roots, monkeypatch):
+def test_mermaid_bundle_fallback_without_writing(roots, monkeypatch):
     package, support = roots
     mermaid(package / 'runtime')
     monkeypatch.setattr(assets, 'download_mermaid', lambda _: pytest.fail('unexpected download'))
@@ -80,7 +80,7 @@ def test_browser_install_and_version_isolation(roots, monkeypatch):
     assert len(calls) == 2
 
 
-def test_browser_bundle_takes_precedence(roots, monkeypatch):
+def test_browser_bundle_fallback_without_writing(roots, monkeypatch):
     package, support = roots
     directory = package / 'browsers'
     directory.mkdir(parents=True)
@@ -133,6 +133,9 @@ def test_setup_populates_support_and_reuses_existing_files(roots, monkeypatch, b
         assert (runtime / 'chunks' / 'module.mjs').read_text() == 'chunk'
         assert (executable.parent / 'LICENSE').read_text() == 'license'
         assert (executable.stat().st_mode & 0o777) == ((package / 'browsers' / 'shell').stat().st_mode & 0o777)
+    # Rendering prefers support files even while both bundles remain installed.
+    assert assets.ensure_mermaid() == runtime
+    assert assets.ensure_browser() == executable
     # Valid support files remain untouched even when the bundle is present.
     (runtime / 'mermaid.esm.min.mjs').write_text('existing runtime')
     executable.write_text('existing browser')

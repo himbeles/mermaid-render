@@ -141,3 +141,7 @@ def test_image_validation(stub_dist, tmp_path):
         convert("flowchart LR; A-->B", format="png", scale=float("nan"))
     with pytest.raises(ValueError, match="Output filename"):
         convert("flowchart LR; A-->B", tmp_path / "test.pdf", format="png")
+
+
+def test_default_format_is_svg(stub_dist):
+    assert b'<svg' in convert('flowchart LR; A-->B')

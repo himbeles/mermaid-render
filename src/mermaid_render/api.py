@@ -178,14 +178,14 @@ def convert(
     """Render Mermaid to SVG, PNG, PDF or editable connected Visio VSDX.
 
     The extension selects the format unless explicitly specified. Without an
-    output path, connected VSDX remains the default. PNG uses ``scale`` as a
+    output path, SVG is the default. PNG uses ``scale`` as a
     pixel density factor (1 = 96 dpi, 2 = 192 dpi). PDF remains vector based.
     Connected VSDX currently supports Mermaid flowcharts only.
     """
     if not math.isfinite(scale) or not (0.1 <= scale <= 4):
         raise ValueError("scale must be between 0.1 and 4")
     if format is None:
-        format = Path(output).suffix.lower().lstrip(".") if output else "vsdx"
+        format = Path(output).suffix.lower().lstrip(".") if output else "svg"
     format = format.lower().lstrip(".")
     if format == "visio":
         format = "vsdx"

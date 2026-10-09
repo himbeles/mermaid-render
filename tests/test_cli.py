@@ -30,3 +30,12 @@ def test_cli_rejects_manual_runtime_paths(option, tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 2
+
+
+def test_cli_defaults_to_svg(stub_dist, tmp_path, monkeypatch):
+    source = tmp_path / 'diagram.mmd'
+    source.write_text('flowchart LR; A-->B', encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', ['mermaid-render', str(source)])
+    main()
+    assert b'<svg' in source.with_suffix('.svg').read_bytes()
+    assert not source.with_suffix('.vsdx').exists()
