@@ -10,14 +10,14 @@ The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-
 
 | CI runner | Wheel suffix | Environment |
 |---|---|---|
-| `ubuntu-24.04` | `py3-none-linux_x86_64.whl` | Linux x86-64 |
+| `ubuntu-24.04` | `py3-none-manylinux_2_39_x86_64.whl` | Linux x86-64, glibc 2.39+ |
 | `windows-2022` | `py3-none-win_amd64.whl` | Windows x86-64 |
 | `macos-15` | `py3-none-macosx_<derived>_arm64.whl` | macOS Apple Silicon |
 | `macos-15-intel` | `py3-none-macosx_<derived>_x86_64.whl` | macOS Intel |
 
 Each wheel includes the official Mermaid **12.1.0** ES-module distribution, the corresponding Playwright **1.63.0** Chromium Headless Shell, a browser-executable manifest, and all Python conversion code. The browser is resolved relative to the installed wheel: no system browser, Node.js, runtime fetching or custom environment variables are necessary. A wheel is **not** a standalone executable; Python and its Playwright dependencies must be installed. The build runner resolves Python dependencies and downloads the browser during CI; target execution needs no network access when the Python dependencies are already installed.
 
-GitHub Actions uploads each wheel as an artifact. Pushing a tag `v0.6.0` also creates/updates a GitHub Release with all wheels attached. **CI has to be run on GitHub to build the real browser-containing wheels**; the repository source archive does not include browser binaries.
+GitHub Actions uploads each wheel as an artifact. Pushing a tag `v0.6.0` also creates/updates a GitHub Release with all wheels attached and publishes the tested offline wheels to PyPI using `uv publish` and Trusted Publishing. The tag must match the version in `pyproject.toml`. **CI has to be run on GitHub to build the real browser-containing wheels**; the repository source archive does not include browser binaries.
 
 ### Building from GitHub
 
@@ -103,13 +103,31 @@ uv run python scripts/build_platform_wheel.py
 uv run python scripts/test_wheel_install.py dist/*.whl
 ```
 
-The platform tag is detected automatically. For Linux, install system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs only the matching headless shell into the package tree, writes a relative executable manifest, builds a platform-specific wheel directly with `uv build` and a Hatchling hook. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
+The platform tag is detected automatically. For Linux, install `patchelf` and system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs only the matching headless shell into the package tree, writes a relative executable manifest, builds a platform-specific wheel directly with `uv build` and a Hatchling hook. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
 
-**Linux caveat:** Chromium uses OS-provided libraries (e.g. glibc, fontconfig, libnss, X11-related shared libraries). Bundling Chromium does **not** bundle an entire Linux distribution; Linux targets must have compatible system libraries. The Linux wheel is intentionally tagged `linux_x86_64`, not `manylinux`, because the bundled Chromium binary is not audited for manylinux compatibility.
+**Linux compatibility:** After building, the script runs `auditwheel repair` for `manylinux_2_39_x86_64`, vendors non-policy shared libraries, and audits the resulting wheel. CI installs and tests that repaired wheel. Linux targets need glibc 2.39+ and the system libraries allowed by the manylinux policy. Runtime-loaded libraries and fonts can still require system packages; auditwheel cannot discover dependencies loaded only through `dlopen`.
 
 **macOS caveat:** The wheel tag derives its minimum version from the bundled Mach-O binaries using `otool`; there is no project-defined macOS minimum. CI tests on macOS 15, so older versions are not independently tested. If Gatekeeper imposes restrictions on downloaded unsigned binaries, local signing or organizational policy may be needed.
 
-**Wheel size:** Each platform wheel may be large, potentially exceeding public package-index per-file limits. The workflow uses GitHub Actions artifacts and GitHub Releases rather than automatic PyPI publishing.
+**Wheel size:** Chromium bundles can exceed PyPI's default 100 MiB per-file limit. The publish job checks all four files before uploading any of them. If needed, request a [PyPI file-size limit increase](https://docs.pypi.org/project-management/storage-limits/), then set the repository Actions variable `PYPI_MAX_FILE_SIZE_MIB` to the approved value. This variable only controls the preflight check; it does not change PyPI's limit.
+
+### Configure PyPI publishing
+
+Commit and push the release changes. Set `project.version` to the intended release version, then push the matching tag, for example:
+
+   ```bash
+   git tag v0.6.0
+   git push origin v0.6.0
+   ```
+
+The workflow also runs builds on pull requests and main-branch pushes, but those runs do not publish to PyPI. If a publish run stops after a partial upload, rerun the failed job: uv checks PyPI and skips identical files already uploaded. Published versions cannot be overwritten; use a new version for changed artifacts.
+
+After the first successful publication:
+
+```bash
+uv tool install mermaid-render
+mermaid-render examples/example.mmd -o diagram.vsdx
+```
 
 ## Development/project structure
 
