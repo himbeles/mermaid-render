@@ -30,7 +30,7 @@ def test_cross_platform_vsdx_graph_writer():
         }
         connector = shapes[2]
         cell_by_name = {x.get("N"): x for x in connector.findall(f"{{{NS_MAIN}}}Cell")}
-        assert cell_by_name["ObjType"].get("V") == "2.0"
+        assert cell_by_name["ObjType"].get("V") == "2"
         assert "Sheet.1!Connections.X1" in cell_by_name["BeginX"].get("F")
         assert "Sheet.2!Connections.X3" in cell_by_name["EndX"].get("F")
         assert len(shapes[0].findall(f".//{{{NS_MAIN}}}Section[@N='Connection']/{{{NS_MAIN}}}Row")) == 4
@@ -55,3 +55,98 @@ def test_uses_svg_y_direction_for_ports():
         # Downwards in SVG means bottom-to-top glue.
         assert links[0].get("ToCell") == "Connections.X4"
         assert links[1].get("ToCell") == "Connections.X2"
+
+
+@pytest.mark.parametrize("target", [(180, 10), (-180, 10), (10, 180), (10, -180), (180, 180)])
+def test_connector_transform_follows_glued_endpoints(target):
+    nodes = [
+        {"id": "a", "x": 10, "y": 10, "width": 80, "height": 40},
+        {"id": "b", "x": target[0], "y": target[1], "width": 80, "height": 40},
+    ]
+    with ZipFile(BytesIO(build_connected_vsdx(nodes, [{"source": "a", "target": "b"}]))) as z:
+        root = ET.fromstring(z.read("visio/pages/page1.xml"))
+    ns = {"v": NS_MAIN}
+    shapes = root.find("v:Shapes", ns)
+    connector = shapes[-1]
+    cells = {c.get("N"): c for c in connector.findall("v:Cell", ns)}
+    assert len(cells) == len(connector.findall("v:Cell", ns))
+    assert {name: cells[name].get("F") for name in (
+        "PinX", "PinY", "LocPinX", "LocPinY", "Width", "Angle",
+    )} == {
+        "PinX": "(BeginX+EndX)/2", "PinY": "(BeginY+EndY)/2",
+        "LocPinX": "Width*0.5", "LocPinY": "Height*0.5",
+        "Width": "SQRT((EndX-BeginX)^2+(EndY-BeginY)^2)",
+        "Angle": "ATAN2(EndY-BeginY,EndX-BeginX)",
+    }
+    # Every glue record must identify an existing connection row and use the
+    # same target as both endpoint formulas; ToPart uses zero-based row indices.
+    for link in root.findall("v:Connects/v:Connect", ns):
+        node = next(s for s in shapes if s.get("ID") == link.get("ToSheet"))
+        row_index = int(link.get("ToPart")) - 100
+        row = node.find(f"v:Section[@N='Connection']/v:Row[@IX='{row_index}']", ns)
+        assert row is not None
+        # Match the connection-point row type emitted by Visio itself. A row
+        # with coordinates alone does not fully describe a connection point.
+        assert row.get("T") == "Connection"
+        assert row.find("v:Cell[@N='AutoGen']", ns).get("V") == "0"
+        assert row.find("v:Cell[@N='Prompt']", ns) is not None
+        reference = f"Sheet.{node.get('ID')}!Connections.X{row_index + 1}"
+        endpoint = link.get("FromCell")[:-1]
+        assert reference in cells[endpoint + "X"].get("F")
+        assert cells[endpoint + "X"].get("F") == cells[endpoint + "Y"].get("F")
+
+
+def test_connector_is_unfilled_for_diagrams_net_import():
+    nodes = [
+        {"id": "a", "x": 0, "y": 0, "width": 80, "height": 40},
+        {"id": "b", "x": 180, "y": 0, "width": 80, "height": 40},
+    ]
+    with ZipFile(BytesIO(build_connected_vsdx(nodes, [{"source": "a", "target": "b"}]))) as z:
+        root = ET.fromstring(z.read("visio/pages/page1.xml"))
+    ns = {"v": NS_MAIN}
+    connector = root.find("v:Shapes", ns)[-1]
+    # diagrams.net uses a literal equality check here. "1.0" makes the
+    # connector a filled vertex, so its source/target relationships are lost.
+    assert connector.find("v:Section[@N='Geometry']/v:Cell[@N='NoFill']", ns).get("V") == "1"
+    assert connector.find("v:Cell[@N='FillPattern']", ns).get("V") == "0"
+
+
+@pytest.mark.parametrize("target", [(180, 10), (10, 180), (180, 180)])
+def test_connector_label_has_independent_readable_text_box(target):
+    nodes = [
+        {"id": "a", "x": 10, "y": 10, "width": 80, "height": 40},
+        {"id": "b", "x": target[0], "y": target[1], "width": 80, "height": 40},
+    ]
+    data = build_connected_vsdx(nodes, [{"source": "a", "target": "b", "text": "Get money"}])
+    with ZipFile(BytesIO(data)) as z:
+        root = ET.fromstring(z.read("visio/pages/page1.xml"))
+    ns = {"v": NS_MAIN}
+    connector = root.find("v:Shapes", ns)[-1]
+    cells = {c.get("N"): c for c in connector.findall("v:Cell", ns)}
+    assert connector.findtext("v:Text", namespaces=ns) == "Get money"
+    assert float(cells["Height"].get("V")) == 0
+    assert float(cells["TxtHeight"].get("V")) >= 24 / 96
+    assert float(cells["TxtWidth"].get("V")) >= (len("Get money") * 7 + 8) / 96
+    assert cells["TxtPinX"].get("F") == "Width*0.5"
+    assert cells["TxtLocPinY"].get("F") == "TxtHeight*0.5"
+    # The text rotation cancels the line rotation, including vertical edges.
+    assert cells["TxtAngle"].get("F") == "-Angle"
+    assert float(cells["TxtAngle"].get("V")) == -float(cells["Angle"].get("V"))
+
+
+@pytest.mark.parametrize("kind,radius", [
+    ("squareRect", None), ("rect", None), ("roundedRect", 5 / 96),
+    ("round", 5 / 96), ("stadium", 20 / 96),
+])
+def test_mermaid_rectangular_shape_variants(kind, radius):
+    node = {"id": "a", "x": 0, "y": 0, "width": 80, "height": 40, "shape": kind}
+    with ZipFile(BytesIO(build_connected_vsdx([node], []))) as z:
+        root = ET.fromstring(z.read("visio/pages/page1.xml"))
+    ns = {"v": NS_MAIN}
+    shape = root.find("v:Shapes/v:Shape", ns)
+    rounding = shape.find("v:Cell[@N='Rounding']", ns)
+    if radius is None:
+        assert rounding is None
+    else:
+        assert float(rounding.get("V")) == pytest.approx(radius, abs=1e-6)
+    assert len(shape.findall("v:Section[@N='Connection']/v:Row", ns)) == 4

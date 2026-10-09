@@ -26,12 +26,17 @@ mermaid-render-fetch = "mermaid_render.vendor:main"
 dev = ["pytest>=8,<10"]
 
 [build-system]
-requires = ["uv_build>=0.10.0,<0.11.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-name = "mermaid_render"
-source-include = ["tests/**", "examples/**", "scripts/**", ".python-version", ".gitignore"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/mermaid_render"]
+exclude = ["**/browsers/**", "**/runtime/**"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/examples", "/scripts", "/hatch_build.py", "/.python-version", "/.gitignore"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

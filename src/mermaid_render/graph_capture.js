@@ -33,11 +33,15 @@
   };
   const candidates = [...svg.querySelectorAll('g.node, g.cluster, [data-id]')].filter(el => el instanceof SVGGraphicsElement);
   function elementFor(id) {
-    const matches = candidates.filter(el =>
-      el.getAttribute('data-id') === id ||
-      el.getAttribute('id') === id ||
-      // Older Mermaid uses flowchart-ID-0; node IDs can include dashes.
-      (el.getAttribute('id') || '').match(/^flowchart-(.*)-\d+$/)?.[1] === id);
+    const matches = candidates.filter(el => {
+      const domId = el.getAttribute('id') || '';
+      // Mermaid 12 prefixes generated IDs with the containing SVG's ID.
+      // Remove that exact prefix before matching; node IDs can contain dashes.
+      const prefix = `${svg.id}-`;
+      const localId = svg.id && domId.startsWith(prefix) ? domId.slice(prefix.length) : domId;
+      return el.getAttribute('data-id') === id || domId === id ||
+        localId.match(/^flowchart-(.*)-\d+$/)?.[1] === id;
+    });
     return matches.find(el => el.classList.contains('node')) ||
       matches.find(el => el.classList.contains('cluster')) || matches[0];
   }
@@ -66,7 +70,8 @@
     const label = (el.querySelector('.nodeLabel, .label, text')?.textContent || '').trim() ||
       formatLabel(n.label, id);
     return {
-      id, ...dim, text:label, shape: String(n.shape || ''),
+      id, ...dim, text:label, shape: String(n.shape || n.type || ''),
+      corner_radius: glyph?.tagName.toLowerCase() === 'rect' ? glyph.rx.baseVal.value : 0,
       fill: cssColor(cs.fill, '#E5EFFA'),
       stroke: cssColor(cs.stroke, '#4472C4'),
       font_color: cssColor(fontCss.fill, '#172D4A'),

@@ -12,8 +12,8 @@ The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-
 |---|---|---|
 | `ubuntu-24.04` | `py3-none-linux_x86_64.whl` | Linux x86-64 |
 | `windows-2022` | `py3-none-win_amd64.whl` | Windows x86-64 |
-| `macos-15` | `py3-none-macosx_15_0_arm64.whl` | macOS 15+ Apple Silicon |
-| `macos-15-intel` | `py3-none-macosx_15_0_x86_64.whl` | macOS 15+ Intel |
+| `macos-15` | `py3-none-macosx_<derived>_arm64.whl` | macOS Apple Silicon |
+| `macos-15-intel` | `py3-none-macosx_<derived>_x86_64.whl` | macOS Intel |
 
 Each wheel includes the official Mermaid **12.1.0** ES-module distribution, the corresponding Playwright **1.63.0** Chromium Headless Shell, a browser-executable manifest, and all Python conversion code. The browser is resolved relative to the installed wheel: no system browser, Node.js, runtime fetching or custom environment variables are necessary. A wheel is **not** a standalone executable; Python and its Playwright dependencies must be installed. The build runner resolves Python dependencies and downloads the browser during CI; target execution needs no network access when the Python dependencies are already installed.
 
@@ -28,7 +28,7 @@ GitHub Actions uploads each wheel as an artifact. Pushing a tag `v0.6.0` also cr
 ### Install and use (after downloading your platform wheel)
 
 ```bash
-uv tool install ./mermaid_render-0.6.0-py3-none-macosx_15_0_arm64.whl
+uv tool install ./mermaid_render-*-py3-none-macosx_*_arm64.whl
 mermaid-render diagram.mmd -o diagram.svg
 mermaid-render diagram.mmd -o diagram.png --scale 2
 mermaid-render diagram.mmd -o diagram.pdf
@@ -91,7 +91,7 @@ uv run pytest -q
 uv run mermaid-render examples/example.mmd --format png --mermaid-dist ./mermaid-dist -o diagram.png
 ```
 
-`uv sync` creates a `.venv`. The source archive does not include a `uv.lock` because resolution needs access to PyPI; generate and commit one with `uv lock` on a network-connected machine for a fully pinned development workflow. The project uses `uv_build` with a modern PEP 621 `pyproject.toml` and `src/` layout.
+`uv sync` creates a `.venv`. The source archive does not include a `uv.lock` because resolution needs access to PyPI; generate and commit one with `uv lock` on a network-connected machine for a fully pinned development workflow. The project uses Hatchling with a modern PEP 621 `pyproject.toml` and `src/` layout.
 
 ### Local platform-specific wheel build
 
@@ -99,15 +99,15 @@ On a machine with internet access, with the same OS/architecture as your intende
 
 ```bash
 uv sync
-uv run python scripts/build_platform_wheel.py --platform-tag macosx_15_0_arm64
+uv run python scripts/build_platform_wheel.py
 uv run python scripts/test_wheel_install.py dist/*.whl
 ```
 
-Select your correct platform tag. For Linux, install system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs only the matching headless shell into the package tree, writes a relative executable manifest, builds with `uv build`, and retags/re-hashes the wheel as platform-specific. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
+The platform tag is detected automatically. For Linux, install system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs only the matching headless shell into the package tree, writes a relative executable manifest, builds a platform-specific wheel directly with `uv build` and a Hatchling hook. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
 
 **Linux caveat:** Chromium uses OS-provided libraries (e.g. glibc, fontconfig, libnss, X11-related shared libraries). Bundling Chromium does **not** bundle an entire Linux distribution; Linux targets must have compatible system libraries. The Linux wheel is intentionally tagged `linux_x86_64`, not `manylinux`, because the bundled Chromium binary is not audited for manylinux compatibility.
 
-**macOS caveat:** Wheels are conservatively tagged macOS 15+ because CI validates them on macOS 15 runners. The Chromium executable's actual minimum supported macOS version may differ. If Gatekeeper imposes restrictions on downloaded unsigned binaries, local signing or organizational policy may be needed.
+**macOS caveat:** The wheel tag derives its minimum version from the bundled Mach-O binaries using `otool`; there is no project-defined macOS minimum. CI tests on macOS 15, so older versions are not independently tested. If Gatekeeper imposes restrictions on downloaded unsigned binaries, local signing or organizational policy may be needed.
 
 **Wheel size:** Each platform wheel may be large, potentially exceeding public package-index per-file limits. The workflow uses GitHub Actions artifacts and GitHub Releases rather than automatic PyPI publishing.
 
@@ -118,7 +118,7 @@ Select your correct platform tag. For Linux, install system browser libraries fi
 - `src/mermaid_render/semantic.py` — connected Visio shapes/edges with Glue formula references
 - `src/mermaid_render/vsdx.py` — geometry-only VSDX exporter for arbitrary SVG
 - `scripts/build_platform_wheel.py` — real platform wheel build with bundled Mermaid/Chromium
-- `scripts/retag_wheel.py` — rewrite wheel platform tag and RECORD hashes
+- `hatch_build.py` and `scripts/wheel_platform.py` — native wheel metadata and binary-derived platform tags
 - `scripts/test_wheel_install.py` and `scripts/smoke_offline.py` — clean-venv install, offline SVG/Visio smoke test
 - `.github/workflows/bundled-wheels.yml` — four-platform build/test/release workflow
 

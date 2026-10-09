@@ -28,7 +28,10 @@ _PORTS = {
 
 
 def _cell(parent: ET.Element, name: str, value: float | int | str, formula: str | None = None) -> None:
-    attrs = {"N": name, "V": number(value) if isinstance(value, (int, float)) else value}
+    # Keep integer flags in Visio's canonical form. diagrams.net compares
+    # geometry booleans such as NoFill to the literal "1", not "1.0".
+    serialized = str(value) if isinstance(value, int) else number(value) if isinstance(value, float) else value
+    attrs = {"N": name, "V": serialized}
     if formula is not None:
         attrs["F"] = formula
     ET.SubElement(parent, tag("Cell"), attrs)
@@ -67,6 +70,11 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
         _cell(shape, key, value)
     geometry = ET.SubElement(shape, tag("Section"), {"N": "Geometry", "IX": "0"})
     kind = str(node.get("shape", "rect")).lower()
+    if kind in {"roundedrect", "round", "rounded", "rounded-rectangle"}:
+        radius = float(node.get("corner_radius") or 5) * PX_TO_IN
+        _cell(shape, "Rounding", min(radius, w / 2, h / 2))
+    elif kind in {"stadium", "pill", "terminal"}:
+        _cell(shape, "Rounding", min(w, h) / 2, "MIN(Width,Height)*0.5")
     if kind in {"decision", "diamond", "rhombus", "question"}:
         outline = ((w/2, 0), (w, h/2), (w/2, h), (0, h/2), (w/2, 0))
     elif kind in {"circle", "ellipse", "doublecircle", "start", "end"}:
@@ -81,12 +89,14 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
 
     ports = ET.SubElement(shape, tag("Section"), {"N": "Connection"})
     for port, (ix, fx, fy) in _PORTS.items():
-        row = ET.SubElement(ports, tag("Row"), {"IX": str(ix)})
+        row = ET.SubElement(ports, tag("Row"), {"T": "Connection", "IX": str(ix)})
         _cell(row, "X", w * fx, f"Width*{fx}" if fx != 0 else "0")
         _cell(row, "Y", h * fy, f"Height*{fy}" if fy != 0 else "0")
         _cell(row, "DirX", 0)
         _cell(row, "DirY", 0)
         _cell(row, "Type", 0)
+        _cell(row, "AutoGen", 0)
+        _cell(row, "Prompt", "")
 
     text = str(node.get("text", node["id"]))
     if text:
@@ -135,18 +145,44 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
         ET.SubElement(connects, tag("Connect"), {
             "FromSheet": str(id), "FromCell": field + "X", "FromPart": "9" if field == "Begin" else "12",
             "ToSheet": str(ids[node]), "ToCell": f"Connections.X{ix}",
+            "ToPart": str(100 + _PORTS[side][0]),
         })
-    for key, value in (("PinX", (x0 + x1) / 2), ("PinY", (y0 + y1) / 2),
-                       ("LocPinX", dist / 2), ("LocPinY", 0),
-                       ("Width", dist), ("Height", 0), ("Angle", angle),
-                       ("ObjType", 2), ("FillPattern", 0),
-                       ("LinePattern", 1), ("LineColor", str(edge.get("stroke", "#4472C4"))),
+    # The visible line's transform must depend on its glued endpoints. Cached
+    # coordinates alone draw correctly once, but do not follow moved boxes.
+    for key, value, formula in (
+        ("PinX", (x0 + x1) / 2, "(BeginX+EndX)/2"),
+        ("PinY", (y0 + y1) / 2, "(BeginY+EndY)/2"),
+        ("LocPinX", dist / 2, "Width*0.5"),
+        ("LocPinY", 0, "Height*0.5"),
+        ("Width", dist, "SQRT((EndX-BeginX)^2+(EndY-BeginY)^2)"),
+        ("Height", 0, None),
+        ("Angle", angle, "ATAN2(EndY-BeginY,EndX-BeginX)"),
+    ):
+        _cell(shape, key, value, formula)
+    for key, value in (("ObjType", 2), ("FillPattern", 0),
+                       ("LineColor", str(edge.get("stroke", "#4472C4"))),
                        ("LineWeight", 0.012), ("LinePattern", 2 if edge.get("dash") else 1),
                        ("BeginArrow", 13 if edge.get("start_arrow") else 0),
                        ("EndArrow", 13 if edge.get("arrow", True) else 0)):
         _cell(shape, key, value)
     label = str(edge.get("text", "")).strip()
     if label:
+        # A 1D line has zero Height, so its label needs an independent text
+        # rectangle. Otherwise importers clip vertical/diagonal edge labels.
+        lines = label.splitlines()
+        text_width = max(dist, (max(map(len, lines)) * 7 + 8) * PX_TO_IN)
+        text_height = (len(lines) * 16 + 8) * PX_TO_IN
+        for key, value, formula in (
+            ("TxtPinX", dist / 2, "Width*0.5"),
+            ("TxtPinY", 0, "Height*0.5"),
+            ("TxtWidth", text_width, f"MAX(Width,{number(text_width)})"),
+            ("TxtHeight", text_height, None),
+            ("TxtLocPinX", text_width / 2, "TxtWidth*0.5"),
+            ("TxtLocPinY", text_height / 2, "TxtHeight*0.5"),
+            ("TxtAngle", -angle, "-Angle"),
+            ("VerticalAlign", 1, None),
+        ):
+            _cell(shape, key, value, formula)
         char = ET.SubElement(shape, tag("Section"), {"N": "Character"})
         row = ET.SubElement(char, tag("Row"), {"IX": "0"})
         _cell(row, "Color", "#172D4A")

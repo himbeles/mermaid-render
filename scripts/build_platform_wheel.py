@@ -1,6 +1,6 @@
 """Build a platform wheel with Mermaid.js + Chromium Headless Shell inside.
 
-Run with `uv run python scripts/build_platform_wheel.py --platform-tag ...` on
+Run with `uv run python scripts/build_platform_wheel.py` on
 EACH corresponding native platform. No Node.js, npm, or system Visio required.
 """
 from __future__ import annotations
@@ -9,7 +9,6 @@ import argparse
 import importlib.metadata
 import json
 import os
-import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -34,23 +33,9 @@ def find_shell(browsers: Path) -> Path:
     return candidates[0]
 
 
-def build(platform_tag: str, version: str, outdir: Path) -> Path:
+def build(version: str, outdir: Path) -> Path:
     from mermaid_render.vendor import download_mermaid
-    from retag_wheel import retag
-
-    # Fail before a potentially expensive download on an incorrectly tagged runner.
-    machine = platform.machine().lower()
-    system = platform.system().lower()
-    expected = {
-        "linux_x86_64": ("linux", {"x86_64", "amd64"}),
-        "win_amd64": ("windows", {"amd64", "x86_64"}),
-        "macosx_15_0_arm64": ("darwin", {"arm64", "aarch64"}),
-        "macosx_15_0_x86_64": ("darwin", {"x86_64", "amd64"}),
-    }
-    if platform_tag not in expected or (system, machine) not in {
-        (expected[platform_tag][0], value) for value in expected[platform_tag][1]
-    }:
-        raise RuntimeError(f"Platform {system}/{machine} does not match requested wheel tag {platform_tag}")
+    from wheel_platform import platform_tag as detect_platform_tag
 
     print(f"Downloading Mermaid {version}...", flush=True)
     download_mermaid(MERMAID, version=version)
@@ -65,6 +50,7 @@ def build(platform_tag: str, version: str, outdir: Path) -> Path:
     # but explicitly ensure it is executable before packaging on POSIX.
     if os.name != "nt":
         executable.chmod(executable.stat().st_mode | 0o111)
+    platform_tag = detect_platform_tag(BROWSERS)
     relative = executable.relative_to(BROWSERS).as_posix()
     (BROWSERS / "BROWSER_INFO.json").write_text(json.dumps({
         "executable": relative,
@@ -75,10 +61,10 @@ def build(platform_tag: str, version: str, outdir: Path) -> Path:
 
     outdir.mkdir(parents=True, exist_ok=True)
     subprocess.run(["uv", "build", "--wheel", "--out-dir", str(outdir)], cwd=PROJECT, check=True)
-    wheels = list(outdir.glob("mermaid_render-*-py3-none-any.whl"))
+    wheels = list(outdir.glob(f"mermaid_render-*-py3-none-{platform_tag}.whl"))
     if len(wheels) != 1:
         raise RuntimeError(f"Expected exactly one newly built wheel, got: {wheels}")
-    result = retag(wheels[0], platform_tag, remove=True)
+    result = wheels[0]
     with ZipFile(result) as z:
         names = set(z.namelist())
         required = {
@@ -99,11 +85,10 @@ def build(platform_tag: str, version: str, outdir: Path) -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform-tag", required=True)
     parser.add_argument("--mermaid-version", default="12.1.0")
     parser.add_argument("--outdir", type=Path, default=PROJECT / "dist")
     opts = parser.parse_args()
-    build(opts.platform_tag, opts.mermaid_version, opts.outdir.resolve())
+    build(opts.mermaid_version, opts.outdir.resolve())
 
 
 if __name__ == "__main__":

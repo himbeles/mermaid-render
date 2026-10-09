@@ -8,8 +8,12 @@ build/
 .mypy_cache/
 .ruff_cache/
 .DS_Store
-src/mermaid_visio/runtime/**
-!src/mermaid_visio/runtime/README.txt
+src/mermaid_render/runtime/**
+!src/mermaid_render/runtime/README.txt
 
-src/mermaid_visio/browsers/**
-!src/mermaid_visio/browsers/README.txt
+src/mermaid_render/browsers/**
+!src/mermaid_render/browsers/README.txt
+
+src/mermaid_render/browsers
+
+mermaid-dist

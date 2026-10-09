@@ -26,10 +26,10 @@ jobs:
             tag: win_amd64
           - name: macOS Apple Silicon
             os: macos-15
-            tag: macosx_15_0_arm64
+            tag: macos-arm64
           - name: macOS Intel
             os: macos-15-intel
-            tag: macosx_15_0_x86_64
+            tag: macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
 
       - name: Build wheel with Mermaid.js and Chromium Headless Shell
         shell: bash
-        run: uv run python scripts/build_platform_wheel.py --platform-tag "${{ matrix.tag }}"
+        run: uv run python scripts/build_platform_wheel.py
 
       - name: Run package tests using bundled Chromium
         run: uv run pytest -q

@@ -22,7 +22,7 @@ def stub_dist(tmp_path):
           nodes: [
             {id:'A',label:'Input',shape:'rect'},
             {id:'B',label:'Output',shape:'decision'},
-            {id:'C',label:'Done',shape:'rect'},
+            {id:'C',label:'Done',shape:'roundedRect'},
           ],
           edges: [
             {start:'A',end:'B',label:'process',arrowTypeEnd:'point'},
@@ -32,7 +32,7 @@ def stub_dist(tmp_path):
         const mermaid = {
           initialize() {},
           async render(id, source) {
-            return {svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 130">
+            return {svg: `<svg id="${id}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 130">
               <g class="node" id="flowchart-A-0" transform="translate(55,60)">
                 <rect x="-45" y="-20" width="90" height="40" fill="#F0F4FF" stroke="#445577"/>
                 <text x="0" y="5" text-anchor="middle">Input</text>
@@ -42,7 +42,7 @@ def stub_dist(tmp_path):
                 <text x="0" y="5" text-anchor="middle">Output</text>
               </g>
               <g class="node" id="flowchart-C-2" transform="translate(345,60)">
-                <rect x="-45" y="-20" width="90" height="40" fill="#F0F4FF" stroke="#445577"/>
+                <rect rx="5" ry="5" x="-45" y="-20" width="90" height="40" fill="#F0F4FF" stroke="#445577"/>
                 <text x="0" y="5" text-anchor="middle">Done</text>
               </g>
             </svg>`};
@@ -64,7 +64,13 @@ def test_svg_output(stub_dist, tmp_path):
     assert b'class="node"' in data
 
 
-def test_connected_vsdx_output(stub_dist, tmp_path):
+@pytest.mark.parametrize("prefix", ["", "mermaid_render_graph-"])
+@pytest.mark.parametrize("node_id", ["A", "A-with-dashes"])
+def test_connected_vsdx_output(stub_dist, tmp_path, prefix, node_id):
+    module = stub_dist / "mermaid.esm.min.mjs"
+    module.write_text(module.read_text().replace("'A'", repr(node_id))
+                      .replace("flowchart-A-0", f"{prefix}flowchart-{node_id}-0")
+                      .replace("flowchart-C-2", f"{prefix}flowchart-C-2"))
     out = tmp_path / "diagram.vsdx"
     data = convert("flowchart LR; A-->B", out, mermaid_dist=stub_dist, chromium_executable=BROWSER)
     with ZipFile(BytesIO(data)) as z:
@@ -77,6 +83,10 @@ def test_connected_vsdx_output(stub_dist, tmp_path):
         assert [x.text for x in root.findall(f".//{{{NS_MAIN}}}Text")] == [
             "Input", "Output", "Done", "process", "yes"
         ]
+        # Mermaid's roundedRect shape and SVG radius must reach the writer.
+        rounding = shapes[2].find(f"{{{NS_MAIN}}}Cell[@N='Rounding']")
+        assert float(rounding.get("V")) == pytest.approx(5 / 96, abs=1e-6)
+        assert shapes[0].find(f"{{{NS_MAIN}}}Cell[@N='Rounding']") is None
         ids = {shape.get("ID") for shape in shapes}
         assert all(link.get("ToSheet") in ids for link in links)
         connectors = shapes[3:]

@@ -1,19 +1,14 @@
 """Cross-platform wheel metadata, included assets, and Chromium discovery."""
 from __future__ import annotations
 
-import base64
-import csv
-import hashlib
-import io
 import json
 from pathlib import Path
 import sys
-from zipfile import ZipFile
 
 import mermaid_render.api as api
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from build_platform_wheel import find_shell
-from retag_wheel import retag
+from wheel_platform import macos_minimum, platform_tag
 
 
 def test_find_headless_shell(tmp_path):
@@ -51,26 +46,50 @@ def test_disallows_manifest_path_escape(tmp_path, monkeypatch):
         raise AssertionError('Unsafe path not rejected')
 
 
-def test_retag_preserves_executable_bits_and_record(tmp_path):
-    filename = tmp_path / 'mermaid_render-0.6.0-py3-none-any.whl'
-    wheel = 'mermaid_render-0.6.0.dist-info/WHEEL'
-    record = 'mermaid_render-0.6.0.dist-info/RECORD'
-    with ZipFile(filename, 'w') as z:
-        z.writestr(wheel, 'Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
-        z.writestr(record, '')
-        from zipfile import ZipInfo
-        exe = ZipInfo('mermaid_render/browsers/chrome-headless-shell')
-        exe.create_system = 3
-        exe.external_attr = 0o100755 << 16
-        z.writestr(exe, b'chromium fake')
-    dest = retag(filename, 'macosx_15_0_arm64')
-    with ZipFile(dest) as z:
-        meta = z.read(wheel).decode()
-        assert 'Tag: py3-none-macosx_15_0_arm64' in meta
-        assert 'Root-Is-Purelib: false' in meta
-        assert (z.getinfo(exe.filename).external_attr >> 16) & 0o111 == 0o111
-        entries = {row[0]: row[1:] for row in csv.reader(io.StringIO(z.read(record).decode()))}
-        for name in (wheel, exe.filename):
-            blob = z.read(name)
-            signature = base64.urlsafe_b64encode(hashlib.sha256(blob).digest()).rstrip(b'=').decode()
-            assert entries[name] == [f'sha256={signature}', str(len(blob))]
+
+def test_macos_tag_uses_highest_binary_minimum(tmp_path, monkeypatch):
+    import wheel_platform
+    from types import SimpleNamespace
+
+    for name in ('shell', 'library.dylib'):
+        (tmp_path / name).write_bytes(bytes.fromhex('cffaedfe'))
+    (tmp_path / 'notice.txt').write_text('license')
+
+    def otool(command, **kwargs):
+        minimum = '13.0' if command[-1].endswith('shell') else '14.0'
+        return SimpleNamespace(stdout=f'Load command 1\n cmd LC_BUILD_VERSION\n minos {minimum}\n sdk 26.5\n')
+
+    monkeypatch.setattr(wheel_platform.subprocess, 'run', otool)
+    monkeypatch.setattr(wheel_platform.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(wheel_platform.platform, 'machine', lambda: 'arm64')
+    assert platform_tag(tmp_path) == 'macosx_14_0_arm64'
+
+
+def test_legacy_macos_load_command(tmp_path, monkeypatch):
+    import wheel_platform
+    from types import SimpleNamespace
+
+    (tmp_path / 'shell').write_bytes(bytes.fromhex('feedfacf'))
+    monkeypatch.setattr(wheel_platform.subprocess, 'run', lambda *a, **kw: SimpleNamespace(
+        stdout='Load command 1\n cmd LC_VERSION_MIN_MACOSX\n version 10.15\n sdk 11.0\n'))
+    assert macos_minimum(tmp_path) == (10, 15)
+
+
+def test_macos_payload_without_version_is_rejected(tmp_path, monkeypatch):
+    import pytest
+    import wheel_platform
+    from types import SimpleNamespace
+
+    (tmp_path / 'shell').write_bytes(bytes.fromhex('cffaedfe'))
+    monkeypatch.setattr(wheel_platform.subprocess, 'run', lambda *a, **kw: SimpleNamespace(stdout=''))
+    with pytest.raises(RuntimeError, match='Cannot determine'):
+        macos_minimum(tmp_path)
+
+
+def test_non_macos_tags(tmp_path, monkeypatch):
+    import wheel_platform
+
+    monkeypatch.setattr(wheel_platform.platform, 'machine', lambda: 'AMD64')
+    for system, tag in [('Windows', 'win_amd64'), ('Linux', 'linux_x86_64')]:
+        monkeypatch.setattr(wheel_platform.platform, 'system', lambda: system)
+        assert platform_tag(tmp_path) == tag
