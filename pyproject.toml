@@ -1,6 +1,6 @@
 [project]
 name = "mermaid-render"
-version = "0.7.0"
+version = "0.7.1"
 description = "Render Mermaid diagrams to SVG, PNG, PDF or connected Visio VSDX"
 readme = "README.md"
 requires-python = ">=3.10"

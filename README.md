@@ -11,7 +11,7 @@ The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-
 - **PyPI:** a small universal Python wheel and source archive, without Mermaid.js or browser binaries. The first render automatically installs the pinned runtime support files.
 - **GitHub Releases:** the exact PyPI artifacts plus four bundled wheels for Linux x86-64, Windows x86-64, macOS Apple Silicon, and macOS Intel. Bundled wheels contain Mermaid **12.1.0** and the Chromium Headless Shell matching Playwright **1.63.0**, so rendering needs no runtime downloads.
 
-A matching version tag (for example `v0.7.0`) attaches all six artifacts to a GitHub Release and publishes only the lightweight artifacts to PyPI through Trusted Publishing. Pull requests, pushes to `main`, and manual runs build and test without publishing.
+A matching version tag (for example `v0.7.1`) attaches all six artifacts to a GitHub Release and publishes only the lightweight artifacts to PyPI through Trusted Publishing. Pull requests, pushes to `main`, and manual runs build and test without publishing.
 
 ### Runtime support files
 
@@ -134,8 +134,8 @@ The platform tag is detected automatically. For Linux, install system browser li
 Commit and push the release changes. Set `project.version` to the intended release version, then push the matching tag, for example:
 
    ```bash
-   git tag v0.7.0
-   git push origin v0.7.0
+   git tag v0.7.1
+   git push origin v0.7.1
    ```
 
 The workflow also runs builds on pull requests and main-branch pushes, but those runs do not publish to PyPI. If a publish run stops after a partial upload, rerun the failed job: uv checks PyPI and skips identical files already uploaded. Published versions cannot be overwritten; use a new version for changed artifacts.

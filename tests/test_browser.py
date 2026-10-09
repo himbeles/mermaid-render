@@ -72,3 +72,34 @@ def test_svg_arrowhead_becomes_visio_arrow(tmp_path):
         root = ET.fromstring(z.read("visio/pages/page1.xml"))
         assert any(c.get("N") == "EndArrow" and c.get("V") == "13"
                    for c in root.findall(f".//{{{NS_MAIN}}}Cell"))
+
+
+def test_mermaid_subgraphs_export_with_connected_nodes():
+    """Exercise Mermaid's real prefixed cluster IDs and retain every glue record."""
+    from mermaid_render import convert
+
+    source = '''flowchart LR
+      subgraph Inputs["Inputs"]
+        A["Input"]
+      end
+      A -->|motion| B["Process"]
+      B --> C["Check"]
+      subgraph Output-group["Outputs"]
+        B
+        C
+      end
+    '''
+    data = convert(source, format='vsdx')
+    with ZipFile(BytesIO(data)) as archive:
+        assert archive.testzip() is None
+        page = ET.fromstring(archive.read('visio/pages/page1.xml'))
+    labels = [el.text for el in page.findall(f'.//{{{NS_MAIN}}}Text')]
+    assert set(labels) == {'Inputs', 'Outputs', 'Input', 'Process', 'Check', 'motion'}
+    shapes = page.findall(f'{{{NS_MAIN}}}Shapes/{{{NS_MAIN}}}Shape')
+    assert len(shapes) == 7  # Two subgraphs, three nodes, two connectors.
+    connects = page.findall(f'{{{NS_MAIN}}}Connects/{{{NS_MAIN}}}Connect')
+    assert len(connects) == 4
+    node_ids = {shape.get('ID') for shape in shapes
+                if shape.find(f'{{{NS_MAIN}}}Text') is not None
+                and shape.find(f'{{{NS_MAIN}}}Text').text in {'Input', 'Process', 'Check'}}
+    assert all(connection.get('ToSheet') in node_ids for connection in connects)

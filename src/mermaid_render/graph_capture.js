@@ -35,11 +35,11 @@
   function elementFor(id) {
     const matches = candidates.filter(el => {
       const domId = el.getAttribute('id') || '';
-      // Mermaid 12 prefixes generated IDs with the containing SVG's ID.
+      // Mermaid 12 prefixes node and subgraph IDs with the containing SVG's ID.
       // Remove that exact prefix before matching; node IDs can contain dashes.
       const prefix = `${svg.id}-`;
       const localId = svg.id && domId.startsWith(prefix) ? domId.slice(prefix.length) : domId;
-      return el.getAttribute('data-id') === id || domId === id ||
+      return el.getAttribute('data-id') === id || domId === id || localId === id ||
         localId.match(/^flowchart-(.*)-\d+$/)?.[1] === id;
     });
     return matches.find(el => el.classList.contains('node')) ||
