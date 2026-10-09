@@ -28,7 +28,7 @@ def main() -> None:
     parser.add_argument("--visio-connectors", choices=["right-angle", "straight", "mermaid"],
                         default="right-angle", help="VSDX connector routing (default: right-angle)")
     parser.add_argument("--background", default="white", help="PNG/PDF background color or transparent (PNG)")
-    parser.add_argument("--scale", type=float, default=1.0, help="PNG pixel density factor (default 1 = 96 dpi)")
+    parser.add_argument("--scale", type=float, default=2.0, help="PNG pixel density factor (default 2 = 192 dpi)")
     args = parser.parse_args()
     fmt = args.format or (args.output.suffix.lower().lstrip(".") if args.output else "svg")
     fmt = "vsdx" if fmt == "visio" else fmt

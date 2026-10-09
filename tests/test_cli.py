@@ -22,6 +22,9 @@ def test_cli_format_inference(extension, signature, stub_dist, tmp_path, monkeyp
     monkeypatch.setattr(sys, "argv", ["mermaid-render", str(input_path), "-o", str(output)])
     main()
     assert signature in output.read_bytes()
+    if extension == 'png':
+        import struct
+        assert struct.unpack('>II', output.read_bytes()[16:24]) == (800, 260)
 
 
 @pytest.mark.parametrize("option", ["--mermaid-dist", "--chromium"])

@@ -174,14 +174,14 @@ def _render_mermaid(
 def convert(
     source: str, output: str | Path | None = None, *, format: str | None = None,
     title: str = "Mermaid Diagram", theme: str = "redux-color",
-    background: str = "white", scale: float = 1.0,
+    background: str = "white", scale: float = 2.0,
     visio_connectors: str = "right-angle",
 ) -> bytes:
     """Render Mermaid to SVG, PNG, PDF or editable connected Visio VSDX.
 
     The extension selects the format unless explicitly specified. Without an
     output path, SVG is the default. PNG uses ``scale`` as a
-    pixel density factor (1 = 96 dpi, 2 = 192 dpi). PDF remains vector based.
+    pixel density factor (default 2 = 192 dpi; 1 = 96 dpi). PDF remains vector based.
     Connected VSDX currently supports Mermaid flowcharts only. Its connector
     routing is right-angle by default; choose straight or mermaid to override.
     """

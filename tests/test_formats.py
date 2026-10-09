@@ -109,15 +109,16 @@ def test_unsupported_diagram_fails_for_connected_visio(stub_dist, tmp_path):
     assert b'<svg' in convert('sequenceDiagram', format='svg')
 
 
-def test_png_output_and_scale(stub_dist, tmp_path):
+@pytest.mark.parametrize('scale,dimensions', [(None, (800, 260)), (1, (400, 130)), (2, (800, 260))])
+def test_png_output_and_scale(stub_dist, tmp_path, scale, dimensions):
     import struct
     out = tmp_path / "diagram.png"
-    data = convert("flowchart LR; A-->B", out,
-                   scale=2)
+    kwargs = {} if scale is None else {'scale': scale}
+    data = convert("flowchart LR; A-->B", out, **kwargs)
     assert out.read_bytes() == data
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     width, height = struct.unpack(">II", data[16:24])
-    assert (width, height) == (800, 260)
+    assert (width, height) == dimensions
 
 
 def test_png_transparent_background(stub_dist):
