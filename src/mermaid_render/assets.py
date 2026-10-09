@@ -94,16 +94,17 @@ def install_browser(destination: Path) -> None:
     }, indent=2) + '\n', encoding='utf-8')
 
 
-def _ensure(name: str, bundled: Path, target: Path, ready: Callable, install: Callable) -> Path:
+def _ensure(name: str, bundled: Path, target: Path, ready: Callable, install: Callable,
+            *, persist: bool = False) -> Path:
     try:
-        found = ready(bundled) or ready(target)
+        found = ready(target) if persist else ready(bundled) or ready(target)
         if found:
             return found
         root = data_root()
         root.mkdir(parents=True, exist_ok=True)
         with FileLock(str(root / '.setup.lock'), timeout=360):
             # Another process may have finished while we waited for its lock.
-            found = ready(bundled) or ready(target)
+            found = ready(target) if persist else ready(bundled) or ready(target)
             if found:
                 return found
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +112,10 @@ def _ensure(name: str, bundled: Path, target: Path, ready: Callable, install: Ca
             with tempfile.TemporaryDirectory(prefix='.install-', dir=target.parent) as temporary:
                 staged = Path(temporary) / 'payload'
                 staged.mkdir()
-                install(staged)
+                if persist and ready(bundled):
+                    shutil.copytree(bundled, staged, dirs_exist_ok=True)
+                else:
+                    install(staged)
                 if not ready(staged):
                     raise RuntimeError(f'{name} installation is incomplete')
                 # Only an incomplete installation can reach this point. Keep it
@@ -128,16 +132,17 @@ def _ensure(name: str, bundled: Path, target: Path, ready: Callable, install: Ca
         ) from exc
 
 
-def ensure_mermaid() -> Path:
+def ensure_mermaid(*, persist: bool = False) -> Path:
     return _ensure('Mermaid', package_root() / 'runtime',
-                   data_root() / 'mermaid' / DEFAULT_VERSION, mermaid_in, download_mermaid)
+                   data_root() / 'mermaid' / DEFAULT_VERSION, mermaid_in, download_mermaid, persist=persist)
 
 
-def ensure_browser() -> Path:
+def ensure_browser(*, persist: bool = False) -> Path:
     key = f'playwright-{browser_version()}-{platform.system().lower()}-{platform.machine().lower()}'
     return _ensure('Chromium', package_root() / 'browsers',
-                   data_root() / 'browsers' / key, browser_in, install_browser)
+                   data_root() / 'browsers' / key, browser_in, install_browser, persist=persist)
 
 
 def setup_runtime() -> tuple[Path, Path]:
-    return ensure_mermaid(), ensure_browser()
+    """Populate persistent support data, copying valid bundled assets offline."""
+    return ensure_mermaid(persist=True), ensure_browser(persist=True)

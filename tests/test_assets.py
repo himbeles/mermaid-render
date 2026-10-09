@@ -99,3 +99,61 @@ def test_render_api_rejects_runtime_paths(keyword):
     from mermaid_render import convert
     with pytest.raises(TypeError, match='unexpected keyword'):
         convert('flowchart LR; A-->B', **{keyword: '/somewhere'})
+
+
+@pytest.mark.parametrize('bundled', [True, False])
+def test_setup_populates_support_and_reuses_existing_files(roots, monkeypatch, bundled):
+    package, support = roots
+    def browser(directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        executable = directory / 'shell'
+        executable.write_text('browser')
+        executable.chmod(0o755)
+        (directory / 'BROWSER_INFO.json').write_text(json.dumps({
+            'executable': 'shell', 'playwright_version': assets.browser_version()}))
+    if bundled:
+        mermaid(package / 'runtime')
+        browser(package / 'browsers')
+        (package / 'runtime' / 'chunks').mkdir()
+        (package / 'runtime' / 'chunks' / 'module.mjs').write_text('chunk')
+        (package / 'browsers' / 'LICENSE').write_text('license')
+        def unexpected_download(_):
+            pytest.fail('setup should copy bundled files without downloading')
+        monkeypatch.setattr(assets, 'download_mermaid', unexpected_download)
+        monkeypatch.setattr(assets, 'install_browser', unexpected_download)
+    else:
+        monkeypatch.setattr(assets, 'download_mermaid', mermaid)
+        monkeypatch.setattr(assets, 'install_browser', browser)
+    runtime, executable = assets.setup_runtime()
+    assert runtime == support / 'mermaid' / assets.DEFAULT_VERSION
+    assert executable.is_relative_to(support / 'browsers')
+    assert assets.mermaid_in(runtime) == runtime
+    assert assets.browser_in(executable.parent) == executable
+    if bundled:
+        assert (runtime / 'chunks' / 'module.mjs').read_text() == 'chunk'
+        assert (executable.parent / 'LICENSE').read_text() == 'license'
+        assert (executable.stat().st_mode & 0o777) == ((package / 'browsers' / 'shell').stat().st_mode & 0o777)
+    # Valid support files remain untouched even when the bundle is present.
+    (runtime / 'mermaid.esm.min.mjs').write_text('existing runtime')
+    executable.write_text('existing browser')
+    assert assets.setup_runtime() == (runtime, executable)
+    assert (runtime / 'mermaid.esm.min.mjs').read_text() == 'existing runtime'
+    assert executable.read_text() == 'existing browser'
+    # Removing the installed bundle still permits reuse without downloads.
+    if bundled:
+        assets.shutil.rmtree(package)
+        assert assets.ensure_mermaid() == runtime
+        assert assets.ensure_browser() == executable
+
+
+def test_failed_bundle_copy_is_not_exposed(roots, monkeypatch):
+    mermaid(roots[0] / 'runtime')
+    def broken_copy(source, destination, **kwargs):
+        (destination / 'partial').write_text('partial')
+        raise OSError('disk full')
+    monkeypatch.setattr(assets.shutil, 'copytree', broken_copy)
+    with pytest.raises(assets.RuntimeSetupError, match='disk full'):
+        assets.setup_runtime()
+    target = roots[1] / 'mermaid' / assets.DEFAULT_VERSION
+    assert not target.exists()
+    assert not list(target.parent.glob('.install-*'))
