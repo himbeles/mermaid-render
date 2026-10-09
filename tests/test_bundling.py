@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-import mermaid_render.api as api
+import mermaid_render.assets as assets
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from build_platform_wheel import find_shell
 from wheel_platform import macos_minimum, platform_tag
@@ -21,25 +21,26 @@ def test_find_headless_shell(tmp_path):
 def test_finds_manifest_bundled_executable(tmp_path, monkeypatch):
     fake_package_dir = tmp_path / 'mermaid_render'
     fake_package_dir.mkdir()
-    monkeypatch.setattr(api, '__file__', str(fake_package_dir / 'api.py'))
+    monkeypatch.setattr(assets, 'package_root', lambda: fake_package_dir)
     browsers = fake_package_dir / 'browsers'
     browsers.mkdir()
     exe = browsers / 'chromium_headless_shell-123' / 'chrome-headless-shell-mac-arm64' / 'chrome-headless-shell'
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b'stub')
-    (browsers / 'BROWSER_INFO.json').write_text(json.dumps({'executable': exe.relative_to(browsers).as_posix()}))
-    assert api._bundled_chromium() == exe
+    exe.chmod(0o755)
+    (browsers / 'BROWSER_INFO.json').write_text(json.dumps({'executable': exe.relative_to(browsers).as_posix(), 'playwright_version': assets.browser_version()}))
+    assert assets.bundled_browser() == exe
 
 
 def test_disallows_manifest_path_escape(tmp_path, monkeypatch):
     fake_package = tmp_path / 'mermaid_render'
     fake_package.mkdir()
-    monkeypatch.setattr(api, '__file__', str(fake_package / 'api.py'))
+    monkeypatch.setattr(assets, 'package_root', lambda: fake_package)
     browsers = fake_package / 'browsers'
     browsers.mkdir()
     (browsers / 'BROWSER_INFO.json').write_text(json.dumps({'executable':'../../etc/passwd'}))
     try:
-        api._bundled_chromium()
+        assets.bundled_browser()
     except ValueError as e:
         assert 'Invalid' in str(e)
     else:

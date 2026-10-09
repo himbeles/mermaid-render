@@ -10,6 +10,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('wheel', type=Path)
+    parser.add_argument('--lightweight', action='store_true')
     opts = parser.parse_args()
     wheel = opts.wheel.resolve()
     script = Path(__file__).with_name('smoke_offline.py').resolve()
@@ -19,11 +20,9 @@ def main():
         exe = dest / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
         subprocess.run(['uv', 'pip', 'install', '--python', str(exe), str(wheel)], check=True)
         env = os.environ.copy()
-        env.pop('MERMAID_DIST', None)
-        env.pop('CHROMIUM_PATH', None)
-        env.pop('PLAYWRIGHT_BROWSERS_PATH', None)
         # Working outside the source checkout verifies that wheel files alone suffice.
-        subprocess.run([str(exe), str(script)], cwd=d, env=env, check=True)
+        subprocess.run([str(exe), str(script)] + (['--lightweight'] if opts.lightweight else []),
+                       cwd=d, env=env, check=True)
 
 
 if __name__ == '__main__':

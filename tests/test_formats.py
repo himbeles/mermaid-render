@@ -1,6 +1,4 @@
 """The same Mermaid source can be rendered as SVG or a connected VSDX."""
-import os
-import shutil
 from io import BytesIO
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
@@ -10,11 +8,9 @@ import pytest
 from mermaid_render import convert
 from mermaid_render.vsdx import NS_MAIN
 
-BROWSER = os.environ.get("CHROMIUM_PATH") or shutil.which("chromium") or shutil.which("google-chrome")
-
 
 @pytest.fixture
-def stub_dist(tmp_path):
+def stub_dist(tmp_path, monkeypatch):
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "mermaid.esm.min.mjs").write_text(r'''
@@ -53,12 +49,13 @@ def stub_dist(tmp_path):
         };
         export default mermaid;
     ''', encoding="utf-8")
+    monkeypatch.setattr("mermaid_render.api.ensure_mermaid", lambda: dist)
     return dist
 
 
 def test_svg_output(stub_dist, tmp_path):
     out = tmp_path / "diagram.svg"
-    data = convert("flowchart LR; A-->B", out, mermaid_dist=stub_dist, chromium_executable=BROWSER)
+    data = convert("flowchart LR; A-->B", out)
     assert out.read_bytes() == data
     assert b'<svg' in data
     assert b'class="node"' in data
@@ -72,7 +69,7 @@ def test_connected_vsdx_output(stub_dist, tmp_path, prefix, node_id):
                       .replace("flowchart-A-0", f"{prefix}flowchart-{node_id}-0")
                       .replace("flowchart-C-2", f"{prefix}flowchart-C-2"))
     out = tmp_path / "diagram.vsdx"
-    data = convert("flowchart LR; A-->B", out, mermaid_dist=stub_dist, chromium_executable=BROWSER)
+    data = convert("flowchart LR; A-->B", out)
     with ZipFile(BytesIO(data)) as z:
         assert z.testzip() is None
         root = ET.fromstring(z.read("visio/pages/page1.xml"))
@@ -97,26 +94,26 @@ def test_connected_vsdx_output(stub_dist, tmp_path, prefix, node_id):
 
 def test_format_validation(stub_dist, tmp_path):
     with pytest.raises(ValueError, match="format must"):
-        convert("graph LR", format="gif", mermaid_dist=stub_dist)
-    assert convert("flowchart LR; A-->B", format="visio", mermaid_dist=stub_dist,
-                   chromium_executable=BROWSER).startswith(b"PK")
+        convert("graph LR", format="gif")
+    assert convert("flowchart LR; A-->B", format="visio",
+                   ).startswith(b"PK")
     with pytest.raises(ValueError, match="Output filename"):
-        convert("graph LR", tmp_path / "a.svg", format="vsdx", mermaid_dist=stub_dist)
+        convert("graph LR", tmp_path / "a.svg", format="vsdx")
 
 
 def test_unsupported_diagram_fails_for_connected_visio(stub_dist, tmp_path):
     f = stub_dist / 'mermaid.esm.min.mjs'
     f.write_text(f.read_text().replace("type:'flowchart-v2'", "type:'sequence'"))
     with pytest.raises(Exception, match="Connected VSDX export supports Mermaid flowcharts"):
-        convert('sequenceDiagram', format='vsdx', mermaid_dist=stub_dist, chromium_executable=BROWSER)
-    assert b'<svg' in convert('sequenceDiagram', format='svg', mermaid_dist=stub_dist, chromium_executable=BROWSER)
+        convert('sequenceDiagram', format='vsdx')
+    assert b'<svg' in convert('sequenceDiagram', format='svg')
 
 
 def test_png_output_and_scale(stub_dist, tmp_path):
     import struct
     out = tmp_path / "diagram.png"
-    data = convert("flowchart LR; A-->B", out, mermaid_dist=stub_dist,
-                   chromium_executable=BROWSER, scale=2)
+    data = convert("flowchart LR; A-->B", out,
+                   scale=2)
     assert out.read_bytes() == data
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     width, height = struct.unpack(">II", data[16:24])
@@ -124,15 +121,14 @@ def test_png_output_and_scale(stub_dist, tmp_path):
 
 
 def test_png_transparent_background(stub_dist):
-    data = convert("flowchart LR; A-->B", format="png", background="transparent",
-                   mermaid_dist=stub_dist, chromium_executable=BROWSER)
+    data = convert("flowchart LR; A-->B", format="png", background="transparent")
     assert data.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_pdf_output(stub_dist, tmp_path):
     out = tmp_path / "diagram.pdf"
-    data = convert("flowchart LR; A-->B", out, mermaid_dist=stub_dist,
-                   chromium_executable=BROWSER)
+    data = convert("flowchart LR; A-->B", out,
+                   )
     assert out.read_bytes() == data
     assert data.startswith(b"%PDF-")
     assert len(data) > 1000

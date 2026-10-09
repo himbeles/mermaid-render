@@ -1,10 +1,4 @@
-import os
-import shutil
-
-BROWSER = os.environ.get("CHROMIUM_PATH") or shutil.which("chromium") or shutil.which("google-chrome")
-
 from io import BytesIO
-from pathlib import Path
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
@@ -27,7 +21,7 @@ SAMPLE_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="340" height="150"
 
 def test_svg_end_to_end(tmp_path):
     try:
-        data = svg_to_vsdx(SAMPLE_SVG, tmp_path / "diagram.vsdx", chromium_executable=BROWSER)
+        data = svg_to_vsdx(SAMPLE_SVG, tmp_path / "diagram.vsdx")
     except Exception as exc:
         if "Executable doesn't exist" in str(exc) or "BrowserType.launch" in str(exc):
             pytest.skip(f"Browser unavailable: {exc}")
@@ -42,7 +36,7 @@ def test_svg_end_to_end(tmp_path):
         assert labels == ["Alpha", "Beta"]
 
 
-def test_mermaid_browser_pipeline_offline_with_stub(tmp_path):
+def test_mermaid_browser_pipeline_offline_with_stub(tmp_path, monkeypatch):
     """Verify local ESM import, Playwright render and SVG output.
 
     The stub deliberately is not the official Mermaid engine, so this test
@@ -62,7 +56,8 @@ def test_mermaid_browser_pipeline_offline_with_stub(tmp_path):
         };
         export default mermaid;
     ''', encoding="utf-8")
-    data = mermaid_to_svg("From Python", mermaid_dist=dist, chromium_executable=BROWSER)
+    monkeypatch.setattr("mermaid_render.api.ensure_mermaid", lambda: dist)
+    data = mermaid_to_svg("From Python")
     root = ET.fromstring(data)
     assert root.find("{http://www.w3.org/2000/svg}text").text == "From Python"
 
@@ -72,7 +67,7 @@ def test_svg_arrowhead_becomes_visio_arrow(tmp_path):
       <defs><marker id="arrow"><path d="M0,0 L10,5 L0,10"/></marker></defs>
       <line x1="0" y1="20" x2="100" y2="20" stroke="black" marker-end="url(#arrow)"/>
     </svg>'''
-    data = svg_to_vsdx(svg, chromium_executable=BROWSER)
+    data = svg_to_vsdx(svg)
     with ZipFile(BytesIO(data)) as z:
         root = ET.fromstring(z.read("visio/pages/page1.xml"))
         assert any(c.get("N") == "EndArrow" and c.get("V") == "13"

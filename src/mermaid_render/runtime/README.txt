@@ -1,1 +1,1 @@
-This directory is filled by: python -m mermaid_render.vendor --bundle --version 12.1.0
+Bundled wheels provide Mermaid here. Lightweight installations use persistent per-user support data. Build bundles with uv run python scripts/build_platform_wheel.py.

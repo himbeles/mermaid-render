@@ -7,7 +7,6 @@ license and its upstream third-party license notices.
 
 from __future__ import annotations
 
-import argparse
 import json
 import io
 import tarfile
@@ -66,20 +65,3 @@ def download_mermaid(destination: str | Path, *, version: str = DEFAULT_VERSION)
         "license": "MIT", "bundled_assets": count,
     }, indent=2) + "\n", encoding="utf-8")
     return destination
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Download official Mermaid JS for offline Python rendering")
-    parser.add_argument("directory", nargs="?", default="mermaid-dist")
-    parser.add_argument("--version", default=DEFAULT_VERSION)
-    parser.add_argument("--bundle", action="store_true", help="Vendor directly into this source checkout before building an offline wheel")
-    args = parser.parse_args()
-    if args.bundle:
-        destination = Path(__file__).resolve().parent / "runtime"
-    else:
-        destination = Path(args.directory)
-    print(f"Mermaid downloaded to {download_mermaid(destination, version=args.version)}")
-
-
-if __name__ == "__main__":
-    main()

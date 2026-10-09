@@ -1,4 +1,4 @@
-name: mermaid-render offline wheels
+name: mermaid-render distributions
 
 on:
   workflow_dispatch:
@@ -33,6 +33,32 @@ jobs:
               raise SystemExit(f"Release tag {tag!r} must match package version v{version}")
           PYTHON
 
+  lightweight:
+    name: Lightweight PyPI distributions
+    needs: release-version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.0"
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - run: uv run python -m playwright install-deps chromium
+      - run: uv run pytest -q
+      - run: uv build --out-dir dist/pypi
+      - run: uv run python scripts/check_lightweight_dist.py dist/pypi
+      - run: uvx --from twine==7.0.0 twine check --strict dist/pypi/*
+      - run: uv run python scripts/test_wheel_install.py --lightweight dist/pypi/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/pypi/*
+          if-no-files-found: error
+
   wheels:
     name: ${{ matrix.name }}
     needs: release-version
@@ -64,9 +90,8 @@ jobs:
         with:
           python-version: "3.13"
 
-      # uv.lock can be committed once generated; until then uv sync resolves it.
       - name: Install Python dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Install Linux Chromium system libraries
         if: runner.os == 'Linux'
@@ -74,20 +99,17 @@ jobs:
 
       - name: Build wheel with Mermaid.js and Chromium Headless Shell
         shell: bash
-        run: uv run python scripts/build_platform_wheel.py
-
-      - name: Run package tests using bundled Chromium
-        run: uv run pytest -q
+        run: uv run python scripts/build_platform_wheel.py --outdir dist/bundled
 
       - name: Test installed wheel without browser/runtime downloads
         shell: bash
-        run: uv run python scripts/test_wheel_install.py dist/*.whl
+        run: uv run python scripts/test_wheel_install.py dist/bundled/*.whl
 
       - name: Publish wheel as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: bundled-${{ matrix.tag }}
-          path: dist/*.whl
+          path: dist/bundled/*.whl
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -95,7 +117,7 @@ jobs:
   release:
     name: Attach wheels to GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: wheels
+    needs: [wheels, lightweight]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -105,15 +127,21 @@ jobs:
           pattern: bundled-*
           path: wheels
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: wheels
       - uses: softprops/action-gh-release@v2
         with:
-          files: wheels/*.whl
+          files: |
+            wheels/*.whl
+            wheels/*.tar.gz
           fail_on_unmatched_files: true
 
   pypi:
-    name: Publish offline wheels to PyPI
+    name: Publish lightweight distributions to PyPI
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'himbeles/mermaid-render'
-    needs: wheels
+    needs: [wheels, lightweight]
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -128,42 +156,12 @@ jobs:
         with:
           version: "0.10.0"
           enable-cache: false
-      - name: Download Windows wheel
+      - name: Download lightweight distributions
         uses: actions/download-artifact@v4
         with:
-          name: bundled-win_amd64
+          name: pypi-dist
           path: dist
-      - name: Download macOS wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: bundled-macos-*
-          path: dist
-          merge-multiple: true
       - name: Check distribution metadata
-        run: uvx --from twine==7.0.0 twine check --strict dist/*.whl
-      - name: Check wheel count and PyPI file sizes
-        env:
-          PYPI_MAX_FILE_SIZE_MIB: ${{ vars.PYPI_MAX_FILE_SIZE_MIB || '100' }}
-        run: |
-          uv run --no-project --python 3.13 python - <<'PYTHON'
-          import os
-          from pathlib import Path
-
-          wheels = list(Path("dist").glob("*.whl"))
-          if len(wheels) != 3:
-              raise SystemExit(f"Expected three Windows/macOS offline wheels, got {len(wheels)}")
-          if any("linux" in wheel.name for wheel in wheels):
-              raise SystemExit("Linux wheels are distributed through GitHub Releases only")
-          limit = float(os.environ["PYPI_MAX_FILE_SIZE_MIB"]) * 1024**2
-          for wheel in wheels:
-              size = wheel.stat().st_size
-              print(f"{wheel.name}: {size / 1024**2:.1f} MiB")
-              if size > limit:
-                  raise SystemExit(
-                      f"{wheel.name} exceeds the configured PyPI file-size limit. "
-                      "Request a PyPI limit increase, then set PYPI_MAX_FILE_SIZE_MIB "
-                      "to the approved limit in repository variables."
-                  )
-          PYTHON
+        run: uvx --from twine==7.0.0 twine check --strict dist/*
       - name: Publish with uv and PyPI Trusted Publishing
-        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*.whl
+        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*

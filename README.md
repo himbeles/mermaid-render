@@ -6,23 +6,31 @@ The converter is adapted from the MIT-licensed [FBklyra/mermaid-to-visio](https:
 
 ## Prebuilt offline wheels via GitHub Actions
 
-The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-wheels.yml) runs on `workflow_dispatch`, pull requests, pushes to `main`, and version tags such as `v0.6.0`. It creates **four distinct wheels**:
+The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-wheels.yml) builds two distributions using uv:
 
-| CI runner | Wheel suffix | Environment |
-|---|---|---|
-| `ubuntu-24.04` | `py3-none-linux_x86_64.whl` | Linux x86-64 |
-| `windows-2022` | `py3-none-win_amd64.whl` | Windows x86-64 |
-| `macos-15` | `py3-none-macosx_<derived>_arm64.whl` | macOS Apple Silicon |
-| `macos-15-intel` | `py3-none-macosx_<derived>_x86_64.whl` | macOS Intel |
+- **PyPI:** a small universal Python wheel and source archive, without Mermaid.js or browser binaries. The first render automatically installs the pinned runtime support files.
+- **GitHub Releases:** the exact PyPI artifacts plus four bundled wheels for Linux x86-64, Windows x86-64, macOS Apple Silicon, and macOS Intel. Bundled wheels contain Mermaid **12.1.0** and the Chromium Headless Shell matching Playwright **1.63.0**, so rendering needs no runtime downloads.
 
-Each wheel includes the official Mermaid **12.1.0** ES-module distribution, the corresponding Playwright **1.63.0** Chromium Headless Shell, a browser-executable manifest, and all Python conversion code. The browser is resolved relative to the installed wheel: no system browser, Node.js, runtime fetching or custom environment variables are necessary. A wheel is **not** a standalone executable; Python and its Playwright dependencies must be installed. The build runner resolves Python dependencies and downloads the browser during CI; target execution needs no network access when the Python dependencies are already installed.
+A matching version tag (for example `v0.7.0`) attaches all six artifacts to a GitHub Release and publishes only the lightweight artifacts to PyPI through Trusted Publishing. Pull requests, pushes to `main`, and manual runs build and test without publishing.
 
-GitHub Actions uploads each wheel as an artifact. Pushing a tag `v0.6.0` also creates/updates a GitHub Release with all wheels attached and publishes the three tested Windows/macOS offline wheels to PyPI using `uv publish` and Trusted Publishing. The tag must match the version in `pyproject.toml`. **CI has to be run on GitHub to build the real browser-containing wheels**; the repository source archive does not include browser binaries.
+### Runtime support files
+
+Each asset is resolved independently: first from its bundled location inside the installed package (`mermaid_render/runtime` and `mermaid_render/browsers`), then from persistent per-user application data:
+
+| OS | Support directory |
+|---|---|
+| macOS | `~/Library/Application Support/mermaid-render` |
+| Linux | `$XDG_DATA_HOME/mermaid-render`, default `~/.local/share/mermaid-render` |
+| Windows | `%LOCALAPPDATA%\mermaid-render` |
+
+These are support files, not temporary or cache files. Mermaid uses a versioned `mermaid/<version>` subdirectory; Chromium uses `browsers/playwright-<version>-<os>-<architecture>`. Upgrades keep versions separate. Downloads are staged and validated before installation, and concurrent processes share an installation lock. Rendering reuses existing files without downloading them again.
+
+Missing assets install automatically on render. Optionally run `mermaid-render setup` beforehand. Runtime paths are managed internally; the CLI and rendering API have no Mermaid or browser path overrides. If automatic setup fails, the error links directly to the [GitHub Releases](https://github.com/himbeles/mermaid-render/releases) bundled wheels and explains how to install one for offline use.
 
 ### Building from GitHub
 
 1. Push this repository to GitHub (including `.github/workflows/bundled-wheels.yml`).
-2. Select **Actions → mermaid-render offline wheels → Run workflow**.
+2. Select **Actions → mermaid-render distributions → Run workflow**.
 3. Download your platform's wheel from the run artifacts, or get all four wheels from the GitHub Release created when you push a `v*` tag.
 
 ### Install and use (after downloading your platform wheel)
@@ -35,7 +43,14 @@ mermaid-render diagram.mmd -o diagram.pdf
 mermaid-render diagram.mmd -o diagram.vsdx
 ```
 
-The example installs the macOS Apple Silicon wheel. Replace its filename with the appropriate wheel for your operating system. If Python dependencies are not cached or installed, `uv tool install` itself needs network access. For a completely air-gapped installation, download **all dependency wheels** beforehand (for example, export requirements with `uv export` and download with `pip download`) and install them using `uv pip install --no-index --find-links=...` into a virtual environment; a wheel containing Chromium does not bundle Python dependencies. The installed CLI can then be invoked from that environment.
+The example installs the macOS Apple Silicon wheel. Choose the wheel matching your operating system and architecture.
+
+For the lightweight PyPI installation:
+
+```bash
+uv tool install mermaid-render
+mermaid-render diagram.mmd -o diagram.vsdx
+```
 
 ```python
 from mermaid_render import convert
@@ -85,13 +100,18 @@ No Node.js process or installed system browser is used by the offline wheels.
 
 ```bash
 uv sync
-uv run python -m playwright install --only-shell chromium
-uv run mermaid-render-fetch ./mermaid-dist --version 12.1.0
 uv run pytest -q
-uv run mermaid-render examples/example.mmd --format png --mermaid-dist ./mermaid-dist -o diagram.png
+uv run mermaid-render examples/example.mmd --format png -o diagram.png
 ```
 
-`uv sync` creates a `.venv`. The source archive does not include a `uv.lock` because resolution needs access to PyPI; generate and commit one with `uv lock` on a network-connected machine for a fully pinned development workflow. The project uses Hatchling with a modern PEP 621 `pyproject.toml` and `src/` layout.
+`uv sync` creates a `.venv` from the committed lockfile. Rendering and browser tests automatically prepare missing runtime support files. The project uses Hatchling with a PEP 621 `pyproject.toml` and `src/` layout.
+
+Default builds are always lightweight, even if the checkout contains old bundled files:
+
+```bash
+uv build --out-dir dist/pypi
+uv run python scripts/check_lightweight_dist.py dist/pypi
+```
 
 ### Local platform-specific wheel build
 
@@ -99,30 +119,28 @@ On a machine with internet access, with the same OS/architecture as your intende
 
 ```bash
 uv sync
-uv run python scripts/build_platform_wheel.py
-uv run python scripts/test_wheel_install.py dist/*.whl
+uv run python scripts/build_platform_wheel.py --outdir dist/bundled
+uv run python scripts/test_wheel_install.py dist/bundled/*.whl
 ```
 
-The platform tag is detected automatically. For Linux, install system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs only the matching headless shell into the package tree, writes a relative executable manifest, builds a platform-specific wheel directly with `uv build` and a Hatchling hook. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
+The platform tag is detected automatically. For Linux, install system browser libraries first (`uv run python -m playwright install-deps chromium`). The script downloads the pinned Mermaid distribution, installs the matching headless shell into temporary staging, writes a relative executable manifest, and builds a platform-specific wheel directly with `uv build` and a Hatchling hook. Staging is removed afterward and the source tree is never populated with runtime assets. The wheel retains native executable permissions and includes upstream license assets distributed in the payload.
 
 **Linux compatibility:** Linux wheels are available through GitHub Releases only. They use the `linux_x86_64` tag and bundle Chromium without vendoring its system libraries. Install compatible browser dependencies on the target system (`python -m playwright install-deps chromium`). The wheel is tested on Ubuntu 24.04 and is not audited for manylinux compatibility.
 
 **macOS caveat:** The wheel tag derives its minimum version from the bundled Mach-O binaries using `otool`; there is no project-defined macOS minimum. CI tests on macOS 15, so older versions are not independently tested. If Gatekeeper imposes restrictions on downloaded unsigned binaries, local signing or organizational policy may be needed.
-
-**Wheel size:** Chromium bundles can exceed PyPI's default 100 MiB per-file limit. The publish job checks all three Windows/macOS files before uploading any of them. If needed, request a [PyPI file-size limit increase](https://docs.pypi.org/project-management/storage-limits/), then set the repository Actions variable `PYPI_MAX_FILE_SIZE_MIB` to the approved value. This variable only controls the preflight check; it does not change PyPI's limit.
 
 ### Configure PyPI publishing
 
 Commit and push the release changes. Set `project.version` to the intended release version, then push the matching tag, for example:
 
    ```bash
-   git tag v0.6.0
-   git push origin v0.6.0
+   git tag v0.7.0
+   git push origin v0.7.0
    ```
 
 The workflow also runs builds on pull requests and main-branch pushes, but those runs do not publish to PyPI. If a publish run stops after a partial upload, rerun the failed job: uv checks PyPI and skips identical files already uploaded. Published versions cannot be overwritten; use a new version for changed artifacts.
 
-After the first successful publication, on Windows or macOS:
+After the first successful publication, on any supported operating system:
 
 ```bash
 uv tool install mermaid-render
@@ -131,7 +149,8 @@ mermaid-render examples/example.mmd -o diagram.vsdx
 
 ## Development/project structure
 
-- `src/mermaid_render/api.py` — Python API, browser lookup, offline Mermaid loading, SVG/PNG/PDF rendering
+- `src/mermaid_render/api.py` — Python API and SVG/PNG/PDF rendering
+- `src/mermaid_render/assets.py` — bundled lookup and persistent runtime support installation
 - `src/mermaid_render/graph_capture.js` — Mermaid graph semantics and SVG geometry extraction
 - `src/mermaid_render/semantic.py` — connected Visio shapes/edges with Glue formula references
 - `src/mermaid_render/vsdx.py` — geometry-only VSDX exporter for arbitrary SVG

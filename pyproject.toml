@@ -1,6 +1,6 @@
 [project]
 name = "mermaid-render"
-version = "0.6.0"
+version = "0.7.0"
 description = "Render Mermaid diagrams to SVG, PNG, PDF or connected Visio VSDX"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,11 +16,10 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
 ]
-dependencies = ["playwright==1.63.0"]
+dependencies = ["playwright==1.63.0", "platformdirs>=4,<5", "filelock>=3.16,<4"]
 
 [project.scripts]
 mermaid-render = "mermaid_render.cli:main"
-mermaid-render-fetch = "mermaid_render.vendor:main"
 
 [dependency-groups]
 dev = ["pytest>=8,<10"]
@@ -36,6 +35,7 @@ exclude = ["**/browsers/**", "**/runtime/**"]
 [tool.hatch.build.targets.wheel.hooks.custom]
 
 [tool.hatch.build.targets.sdist]
+exclude = ["/src/mermaid_render/runtime/**", "/src/mermaid_render/browsers/**"]
 include = ["/src", "/tests", "/examples", "/scripts", "/hatch_build.py", "/.python-version", "/.gitignore"]
 
 [tool.pytest.ini_options]

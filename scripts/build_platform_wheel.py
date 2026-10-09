@@ -6,61 +6,37 @@ EACH corresponding native platform. No Node.js, npm, or system Visio required.
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
-import json
-import os
 import subprocess
-import sys
+import os
+import tempfile
 from pathlib import Path
 from zipfile import ZipFile
 
 PROJECT = Path(__file__).resolve().parents[1]
-PACKAGE = PROJECT / "src" / "mermaid_render"
-MERMAID = PACKAGE / "runtime"
-BROWSERS = PACKAGE / "browsers"
-
-# Matches the documented Playwright Chromium Headless Shell layouts.
-SHELL_NAMES = {"chrome-headless-shell", "chrome-headless-shell.exe", "headless_shell"}
-
-
-def find_shell(browsers: Path) -> Path:
-    candidates = sorted(
-        p for p in browsers.glob("chromium_headless_shell-*/*/*")
-        if p.is_file() and p.name in SHELL_NAMES
-    )
-    if len(candidates) != 1:
-        raise RuntimeError(f"Expected exactly one Chromium Headless Shell in {browsers}, got: {candidates}")
-    return candidates[0]
+from mermaid_render.assets import find_shell, install_browser
+from mermaid_render.vendor import DEFAULT_VERSION
 
 
 def build(version: str, outdir: Path) -> Path:
     from mermaid_render.vendor import download_mermaid
     from wheel_platform import platform_tag as detect_platform_tag
 
-    print(f"Downloading Mermaid {version}...", flush=True)
-    download_mermaid(MERMAID, version=version)
-    print("Installing Chromium Headless Shell with Playwright...", flush=True)
-    env = os.environ.copy()
-    env["PLAYWRIGHT_BROWSERS_PATH"] = str(BROWSERS)
-    env["PLAYWRIGHT_SKIP_BROWSER_GC"] = "1"
-    subprocess.run([sys.executable, "-m", "playwright", "install", "--only-shell", "chromium"],
-                   cwd=PROJECT, env=env, check=True)
-    executable = find_shell(BROWSERS)
-    # A wheel installed through an installer should preserve the executable mode,
-    # but explicitly ensure it is executable before packaging on POSIX.
-    if os.name != "nt":
-        executable.chmod(executable.stat().st_mode | 0o111)
-    platform_tag = detect_platform_tag(BROWSERS)
-    relative = executable.relative_to(BROWSERS).as_posix()
-    (BROWSERS / "BROWSER_INFO.json").write_text(json.dumps({
-        "executable": relative,
-        "playwright_version": importlib.metadata.version("playwright"),
-        "platform_tag": platform_tag,
-        "mermaid_version": version,
-    }, indent=2) + "\n", encoding="utf-8")
-
     outdir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(outdir)], cwd=PROJECT, check=True)
+    with tempfile.TemporaryDirectory(prefix="mermaid-bundle-") as temporary:
+        staging = Path(temporary)
+        runtime = staging / "runtime"
+        browsers = staging / "browsers"
+        print(f"Downloading Mermaid {version}...", flush=True)
+        download_mermaid(runtime, version=version)
+        print("Installing Chromium Headless Shell with Playwright...", flush=True)
+        install_browser(browsers)
+        executable = find_shell(browsers)
+        platform_tag = detect_platform_tag(browsers)
+        relative = executable.relative_to(browsers).as_posix()
+        env = os.environ.copy()
+        env["MERMAID_RENDER_BUNDLE_DIR"] = str(staging)
+        subprocess.run(["uv", "build", "--wheel", "--out-dir", str(outdir)],
+                       cwd=PROJECT, env=env, check=True)
     wheels = list(outdir.glob(f"mermaid_render-*-py3-none-{platform_tag}.whl"))
     if len(wheels) != 1:
         raise RuntimeError(f"Expected exactly one newly built wheel, got: {wheels}")
@@ -85,10 +61,9 @@ def build(version: str, outdir: Path) -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mermaid-version", default="12.1.0")
     parser.add_argument("--outdir", type=Path, default=PROJECT / "dist")
     opts = parser.parse_args()
-    build(opts.mermaid_version, opts.outdir.resolve())
+    build(DEFAULT_VERSION, opts.outdir.resolve())
 
 
 if __name__ == "__main__":

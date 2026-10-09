@@ -1,1 +1,1 @@
-Platform-specific Chromium Headless Shell is vendored here by the GitHub Actions wheel build.
+Bundled wheels provide Chromium here. Lightweight installations use persistent per-user support data. Build bundles with uv run python scripts/build_platform_wheel.py.
