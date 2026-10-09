@@ -81,7 +81,7 @@ Download a **bundled wheel** from [GitHub Releases](https://github.com/himbeles/
 Transfer the wheel to the target machine and install it using its full filename, for example:
 
 ```bash
-uv tool install ./mermaid_render-0.9.0-py3-none-macosx_13_0_arm64.whl
+uv tool install ./mermaid_render-0.9.1-py3-none-macosx_13_0_arm64.whl
 mermaid-render diagram.mmd -o diagram.vsdx
 ```
 
