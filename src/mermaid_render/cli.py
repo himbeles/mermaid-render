@@ -24,7 +24,9 @@ def main() -> None:
     parser.add_argument("-o", "--output", type=Path, help="Output .svg, .png, .pdf or .vsdx file")
     parser.add_argument("-f", "--format", choices=["svg", "png", "pdf", "visio", "vsdx"], help="Output format (otherwise inferred from -o, default svg)")
     parser.add_argument("--title", help="Diagram title for Visio")
-    parser.add_argument("--theme", default="default", help="Mermaid theme")
+    parser.add_argument("--theme", default="redux-color", help="Mermaid theme (default: redux-color)")
+    parser.add_argument("--visio-connectors", choices=["right-angle", "straight", "mermaid"],
+                        default="right-angle", help="VSDX connector routing (default: right-angle)")
     parser.add_argument("--background", default="white", help="PNG/PDF background color or transparent (PNG)")
     parser.add_argument("--scale", type=float, default=1.0, help="PNG pixel density factor (default 1 = 96 dpi)")
     args = parser.parse_args()
@@ -38,7 +40,7 @@ def main() -> None:
     try:
         convert(args.input.read_text(encoding="utf-8"), output, format=fmt,
                 title=args.title or args.input.stem, theme=args.theme,
-                background=args.background, scale=args.scale)
+                background=args.background, scale=args.scale, visio_connectors=args.visio_connectors)
     except RuntimeSetupError as exc:
         parser.exit(1, f"{exc}\n")
     print(f"Created {output}")

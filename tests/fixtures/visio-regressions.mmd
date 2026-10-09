@@ -1,0 +1,6 @@
+flowchart LR
+ subgraph Group[Inputs]
+ A([Start]) -->|next| B["First<br/>line"]
+ end
+ B --> C[(Database)] --> D{{Hexagon}}
+ D -->|retry| D

@@ -115,7 +115,7 @@ def _render_image(page, *, output_format: str, background: str, scale: float) ->
 
 def _render_mermaid(
     source: str, *, format: str, title: str, theme: str,
-    background: str, scale: float,
+    background: str, scale: float, visio_connectors: str,
 ) -> bytes:
     from playwright.sync_api import sync_playwright
 
@@ -164,7 +164,8 @@ def _render_mermaid(
                 # Do not silently emit a Visio drawing with disconnected nodes.
                 if not graph.get("nodes") or not graph.get("edges"):
                     raise ValueError("Connected VSDX requires a flowchart containing nodes and edges")
-                result = build_connected_vsdx(graph["nodes"], graph["edges"], title=title)
+                result = build_connected_vsdx(graph["nodes"], graph["edges"], title=title,
+                                              connectors=visio_connectors)
         finally:
             browser.close()
     return result
@@ -172,18 +173,22 @@ def _render_mermaid(
 
 def convert(
     source: str, output: str | Path | None = None, *, format: str | None = None,
-    title: str = "Mermaid Diagram", theme: str = "default",
+    title: str = "Mermaid Diagram", theme: str = "redux-color",
     background: str = "white", scale: float = 1.0,
+    visio_connectors: str = "right-angle",
 ) -> bytes:
     """Render Mermaid to SVG, PNG, PDF or editable connected Visio VSDX.
 
     The extension selects the format unless explicitly specified. Without an
     output path, SVG is the default. PNG uses ``scale`` as a
     pixel density factor (1 = 96 dpi, 2 = 192 dpi). PDF remains vector based.
-    Connected VSDX currently supports Mermaid flowcharts only.
+    Connected VSDX currently supports Mermaid flowcharts only. Its connector
+    routing is right-angle by default; choose straight or mermaid to override.
     """
     if not math.isfinite(scale) or not (0.1 <= scale <= 4):
         raise ValueError("scale must be between 0.1 and 4")
+    if visio_connectors not in {"right-angle", "straight", "mermaid"}:
+        raise ValueError("visio_connectors must be 'right-angle', 'straight', or 'mermaid'")
     if format is None:
         format = Path(output).suffix.lower().lstrip(".") if output else "svg"
     format = format.lower().lstrip(".")
@@ -194,7 +199,7 @@ def convert(
     if output is not None and Path(output).suffix.lower() != f".{format}":
         raise ValueError(f"Output filename must end with .{format}")
     result = _render_mermaid(source, format=format, title=title, theme=theme,
-                             background=background, scale=scale)
+                             background=background, scale=scale, visio_connectors=visio_connectors)
     if output is not None:
         Path(output).write_bytes(result)
     return result

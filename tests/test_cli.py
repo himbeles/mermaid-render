@@ -39,3 +39,17 @@ def test_cli_defaults_to_svg(stub_dist, tmp_path, monkeypatch):
     main()
     assert b'<svg' in source.with_suffix('.svg').read_bytes()
     assert not source.with_suffix('.vsdx').exists()
+
+
+@pytest.mark.parametrize('routing', [None, 'right-angle', 'straight', 'mermaid'])
+def test_cli_visio_connector_routing(routing, tmp_path, monkeypatch):
+    source = tmp_path / 'diagram.mmd'
+    source.write_text('flowchart LR; A-->B')
+    calls = []
+    monkeypatch.setattr('mermaid_render.cli.convert', lambda *args, **kwargs: calls.append(kwargs))
+    argv = ['mermaid-render', str(source), '-f', 'vsdx']
+    if routing:
+        argv += ['--visio-connectors', routing]
+    monkeypatch.setattr(sys, 'argv', argv)
+    main()
+    assert calls[0]['visio_connectors'] == (routing or 'right-angle')

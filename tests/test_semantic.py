@@ -40,8 +40,19 @@ def test_abstract_graph_bad_links_rejected():
     nodes = [{"id": "one", "x": 0, "y": 0, "width": 80, "height": 40}]
     with pytest.raises(ValueError, match="Unknown edge"):
         build_connected_vsdx(nodes, [{"source": "one", "target": "missing"}])
-    with pytest.raises(ValueError, match="Self loops"):
-        build_connected_vsdx(nodes, [{"source": "one", "target": "one"}])
+
+
+def test_self_loop_has_visible_route_and_two_distinct_glued_ports():
+    nodes = [{"id": "one", "x": 0, "y": 0, "width": 80, "height": 40}]
+    with ZipFile(BytesIO(build_connected_vsdx(nodes, [{"source": "one", "target": "one"}]))) as z:
+        root = ET.fromstring(z.read('visio/pages/page1.xml'))
+    ns = {'v': NS_MAIN}
+    links = root.findall('v:Connects/v:Connect', ns)
+    assert {c.get('ToSheet') for c in links} == {'1'}
+    assert {c.get('ToCell') for c in links} == {'Connections.X1', 'Connections.X2'}
+    connector = root.find('v:Shapes', ns)[-1]
+    assert len(connector.findall("v:Section[@N='Geometry']/v:Row", ns)) == 5
+    assert any(float(c.get('V')) != 0 for c in connector.findall("v:Section[@N='Geometry']/v:Row/v:Cell[@N='Y']", ns))
 
 
 def test_uses_svg_y_direction_for_ports():
@@ -55,6 +66,17 @@ def test_uses_svg_y_direction_for_ports():
         # Downwards in SVG means bottom-to-top glue.
         assert links[0].get("ToCell") == "Connections.X4"
         assert links[1].get("ToCell") == "Connections.X2"
+
+
+def test_wide_overlapping_boxes_connect_on_the_separating_axis():
+    nodes = [
+        {'id': 'a', 'x': 0, 'y': 0, 'width': 160, 'height': 40},
+        {'id': 'b', 'x': 100, 'y': 80, 'width': 160, 'height': 40},
+    ]
+    with ZipFile(BytesIO(build_connected_vsdx(nodes, [{'source': 'a', 'target': 'b'}]))) as z:
+        root = ET.fromstring(z.read('visio/pages/page1.xml'))
+    links = root.findall(f'.//{{{NS_MAIN}}}Connect')
+    assert [link.get('ToCell') for link in links] == ['Connections.X4', 'Connections.X2']
 
 
 @pytest.mark.parametrize("target", [(180, 10), (-180, 10), (10, 180), (10, -180), (180, 180)])
@@ -150,3 +172,40 @@ def test_mermaid_rectangular_shape_variants(kind, radius):
     else:
         assert float(rounding.get("V")) == pytest.approx(radius, abs=1e-6)
     assert len(shape.findall("v:Section[@N='Connection']/v:Row", ns)) == 4
+
+
+def test_rendered_bezier_controls_and_glue_preserve_svg_coordinates():
+    from math import cos, sin
+
+    nodes = [
+        {'id': 'a', 'x': 0, 'y': 0, 'width': 80, 'height': 40},
+        {'id': 'b', 'x': 180, 'y': 120, 'width': 80, 'height': 80, 'shape': 'diam'},
+    ]
+    segments = [
+        {'type': 'M', 'points': [{'x': 60, 'y': 40}]},
+        {'type': 'Q', 'points': [{'x': 60, 'y': 70}, {'x': 100, 'y': 70}]},
+        {'type': 'C', 'points': [{'x': 150, 'y': 70}, {'x': 200, 'y': 90}, {'x': 200, 'y': 140}]},
+    ]
+    edge = {'source': 'a', 'target': 'b', 'route': [{'x': 60, 'y': 40}, {'x': 200, 'y': 140}], 'segments': segments}
+    with ZipFile(BytesIO(build_connected_vsdx(nodes, [edge], connectors='mermaid'))) as archive:
+        page = ET.fromstring(archive.read('visio/pages/page1.xml'))
+    ns = {'v': NS_MAIN}
+    shapes = page.findall('v:Shapes/v:Shape', ns)
+    cells = {c.get('N'): float(c.get('V')) for c in shapes[-1].findall('v:Cell', ns)
+             if c.get('N') in {'BeginX', 'BeginY', 'Width', 'Height', 'Angle'}}
+    assert cells['Height'] == cells['Width'] > 0
+    rows = shapes[-1].findall("v:Section[@N='Geometry']/v:Row", ns)
+    assert [r.get('T') for r in rows] == ['RelMoveTo', 'RelQuadBezTo', 'RelCubBezTo']
+    for segment, row in zip(segments, rows):
+        for point, (xc, yc) in zip([segment['points'][-1]] + segment['points'][:-1], [('X','Y'), ('A','B'), ('C','D')]):
+            x = float(row.find(f"v:Cell[@N='{xc}']", ns).get('V')) * cells['Width']
+            y = float(row.find(f"v:Cell[@N='{yc}']", ns).get('V')) * cells['Height']
+            dx = x*cos(cells['Angle']) - y*sin(cells['Angle'])
+            dy = x*sin(cells['Angle']) + y*cos(cells['Angle'])
+            assert dx == pytest.approx((point['x'] - 60)/96, abs=1e-5)
+            assert dy == pytest.approx(-(point['y'] - 40)/96, abs=1e-5)
+    assert {c.get('ToCell') for c in page.findall('v:Connects/v:Connect', ns)} == {'Connections.X5'}
+    target_port = shapes[1].find("v:Section[@N='Connection']/v:Row[@IX='4']", ns)
+    assert float(target_port.find("v:Cell[@N='X']", ns).get('V')) == pytest.approx(20/96, abs=1e-6)
+    assert float(target_port.find("v:Cell[@N='Y']", ns).get('V')) == pytest.approx(60/96, abs=1e-6)
+    assert 'extra_ports' not in nodes[0]

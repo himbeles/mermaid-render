@@ -1,0 +1,14 @@
+flowchart TD
+    Form@{ shape: manual-input, label: "User fills in form" }
+    Docs@{ shape: docs, label: "Uploaded documents" }
+    Check@{ shape: procs, label: "Automated checks" }
+    Decision@{ shape: diam, label: "Application approved?" }
+    DB@{ shape: cyl, label: "Customer database" }
+    Letter@{ shape: stadium, label: "Send welcome email" }
+
+    Form --> Docs
+    Docs --> Check
+    Check --> Decision
+    Decision -->|Yes| DB
+    Decision -->|No| Form
+    DB --> Letter

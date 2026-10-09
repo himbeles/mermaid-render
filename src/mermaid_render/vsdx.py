@@ -114,7 +114,8 @@ def _shape_text(parent: ET.Element, item: dict, space: CoordinateSpace) -> None:
     for n, v in (("PinX", (left + right) / 2), ("PinY", (top + bottom) / 2),
                  ("Width", width), ("Height", height), ("LocPinX", width / 2),
                  ("LocPinY", height / 2), ("Angle", 0), ("FillPattern", 0),
-                 ("LinePattern", 0), ("VerticalAlign", 1), ("TextDirection", 0)):
+                 ("LinePattern", 0), ("VerticalAlign", 1), ("TextDirection", 0),
+                 ("TextBkgnd", 0), ("TextBkgndTrans", 1)):
         cell(parent, n, number(v))
 
     char_section = ET.SubElement(parent, tag("Section"), {"N": "Character"})

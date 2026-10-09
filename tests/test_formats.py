@@ -145,3 +145,8 @@ def test_image_validation(stub_dist, tmp_path):
 
 def test_default_format_is_svg(stub_dist):
     assert b'<svg' in convert('flowchart LR; A-->B')
+
+
+def test_invalid_visio_connector_routing():
+    with pytest.raises(ValueError, match='visio_connectors must'):
+        convert('flowchart LR; A-->B', format='vsdx', visio_connectors='curvy')

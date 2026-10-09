@@ -11,7 +11,7 @@ The workflow [`.github/workflows/bundled-wheels.yml`](.github/workflows/bundled-
 - **PyPI:** a small universal Python wheel and source archive, without Mermaid.js or browser binaries. The first render automatically installs the pinned runtime support files.
 - **GitHub Releases:** the exact PyPI artifacts plus four bundled wheels for Linux x86-64, Windows x86-64, macOS Apple Silicon, and macOS Intel. Bundled wheels contain Mermaid **12.1.0** and the Chromium Headless Shell matching Playwright **1.63.0**, so rendering needs no runtime downloads.
 
-A matching version tag (for example `v0.8.0`) attaches all six artifacts to a GitHub Release and publishes only the lightweight artifacts to PyPI through Trusted Publishing. Pull requests, pushes to `main`, and manual runs build and test without publishing.
+A matching version tag (for example `v0.9.0`) attaches all six artifacts to a GitHub Release and publishes only the lightweight artifacts to PyPI through Trusted Publishing. Pull requests, pushes to `main`, and manual runs build and test without publishing.
 
 ### Runtime support files
 
@@ -67,12 +67,14 @@ convert(source, "diagram.pdf")
 convert(source, "diagram.vsdx")
 ```
 
-Visio VSDX generation creates editable flowchart shapes and *native connection relationships*, not generic disconnected SVG paths. Only flowcharts currently support connected VSDX export; other Mermaid diagram types can be exported as SVG, PNG or PDF. Connection behavior after editing/moving nodes in desktop Visio is not yet independently verified.
+Visio VSDX generation creates editable flowchart shapes and *native connection relationships*, not generic disconnected SVG paths. Only flowcharts currently support connected VSDX export; other Mermaid diagram types can be exported as SVG, PNG or PDF. Connection behavior after editing/moving nodes in desktop Visio is not yet independently verified. Complex flowchart glyphs (including manual input and stacked documents/processes) retain their rendered outlines as native editable geometry.
+
+VSDX uses right-angle connectors by default, with a small number of rectangular bends and native Visio rerouting enabled. Mermaid's attachment points are preserved, including connections along diamond edges. Each shape also retains its standard right/top/left/bottom connection points for adding new connections. Choose `--visio-connectors straight` for direct lines, or `--visio-connectors mermaid` to preserve Mermaid's detailed curves. Self-loops retain a visible loop even in straight mode. The Python equivalent is `convert(source, "diagram.vsdx", visio_connectors="right-angle")`; the lower-level `build_connected_vsdx` API uses `connectors="right-angle"`. These options affect VSDX only.
 
 ## Output formats
 
 `mermaid-render` infers the format from the output extension; use `-f/--format`
-to choose explicitly (`svg`, `png`, `pdf`, `visio`/`vsdx`). Without an output filename or explicit format, SVG is the default; the CLI writes beside the input file with a `.svg` extension. The API returns
+to choose explicitly (`svg`, `png`, `pdf`, `visio`/`vsdx`). Without an output filename or explicit format, SVG is the default; the CLI writes beside the input file with a `.svg` extension. The default Mermaid theme is `redux-color`; use `--theme` or the API’s `theme=` argument to override it. The API returns
 bytes and optionally writes the output file:
 
 ```bash
@@ -80,6 +82,7 @@ mermaid-render diagram.mmd -o diagram.svg
 mermaid-render diagram.mmd -o diagram.png --scale 2 --background transparent
 mermaid-render diagram.mmd -o diagram.pdf --background white
 mermaid-render diagram.mmd -o diagram.vsdx
+mermaid-render diagram.mmd -o diagram.vsdx --visio-connectors straight
 ```
 
 - **SVG:** Original Mermaid-generated SVG markup, without rasterization.
@@ -134,8 +137,8 @@ The platform tag is detected automatically. For Linux, install system browser li
 Commit and push the release changes. Set `project.version` to the intended release version, then push the matching tag, for example:
 
    ```bash
-   git tag v0.8.0
-   git push origin v0.8.0
+   git tag v0.9.0
+   git push origin v0.9.0
    ```
 
 The workflow also runs builds on pull requests and main-branch pushes, but those runs do not publish to PyPI. If a publish run stops after a partial upload, rerun the failed job: uv checks PyPI and skips identical files already uploaded. Published versions cannot be overwritten; use a new version for changed artifacts.
