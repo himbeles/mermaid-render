@@ -69,7 +69,7 @@ Support files persist in user application data, rather than a temporary cache:
 
 The package checks version-matched user support files first, then bundled files. Setup copies bundled files into the support directory when needed, or downloads missing files. Existing valid files are reused. Paths are managed automatically.
 
-For a normal PyPI installation on Linux, install Chromium's system libraries on a connected machine with:
+On Linux, Chromium also needs system libraries. On a connected machine, install them with:
 
 ```bash
 uvx --from playwright==1.63.0 playwright install-deps chromium
@@ -93,9 +93,9 @@ uv tool install ./mermaid_render-0.10.0-py3-none-macosx_13_0_arm64.whl
 mermaid-render diagram.mmd -o diagram.vsdx
 ```
 
-Bundled wheels include Mermaid.js and Chromium, so rendering requires no runtime downloads. Linux bundles also include the browser's shared libraries, fonts, and license notices; no browser system-library installation is needed. Optional `mermaid-render setup` copies the complete bundle into the user support directory.
+Bundled wheels include Mermaid.js and Chromium, so rendering requires no runtime downloads. Optional `mermaid-render setup` copies these assets into the user support directory.
 
-Linux x86-64 wheels target glibc 2.39 or newer (Ubuntu 24.04 or compatible) and are tested in a minimal Ubuntu container with networking disabled. The host provides glibc and the ELF loader; Alpine/musl is not supported. They are not manylinux wheels. macOS wheels encode the minimum OS version required by their binaries; CI tests on macOS 15.
+Linux wheels are tested on Ubuntu 24.04 and require compatible system browser libraries to be present on the offline machine. They are not manylinux wheels. macOS wheels encode the minimum OS version required by their binaries; CI tests on macOS 15.
 
 GitHub Releases also contain the lightweight PyPI wheel and source archive. Choose a platform-specific wheel for the bundled runtime.
 

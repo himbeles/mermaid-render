@@ -95,9 +95,7 @@ jobs:
 
       - name: Install Linux Chromium system libraries
         if: runner.os == 'Linux'
-        run: |
-          uv run python -m playwright install-deps chromium
-          sudo apt-get install -y --no-install-recommends libfontconfig1 libfreetype6 fonts-liberation fonts-dejavu-core
+        run: uv run python -m playwright install-deps chromium
 
       - name: Build wheel with Mermaid.js and Chromium Headless Shell
         shell: bash
@@ -106,10 +104,6 @@ jobs:
       - name: Test installed wheel without browser/runtime downloads
         shell: bash
         run: uv run python scripts/test_wheel_install.py dist/bundled/*.whl
-
-      - name: Test Linux wheel without host browser libraries or networking
-        if: runner.os == 'Linux'
-        run: uv run python scripts/test_linux_wheel.py dist/bundled/*.whl
 
       - name: Publish wheel as workflow artifact
         uses: actions/upload-artifact@v4

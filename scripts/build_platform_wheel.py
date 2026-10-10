@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import subprocess
 import os
-import platform
 import tempfile
 from pathlib import Path
 from zipfile import ZipFile
@@ -32,9 +31,6 @@ def build(version: str, outdir: Path) -> Path:
         print("Installing Chromium Headless Shell with Playwright...", flush=True)
         install_browser(browsers)
         executable = find_shell(browsers)
-        if platform.system() == 'Linux':
-            from bundle_linux import bundle_linux
-            bundle_linux(browsers, executable)
         platform_tag = detect_platform_tag(browsers)
         relative = executable.relative_to(browsers).as_posix()
         env = os.environ.copy()
