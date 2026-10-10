@@ -74,7 +74,7 @@ def _shape_geometry(parent: ET.Element, item: dict, space: CoordinateSpace) -> N
     for n, v in (("PinX", (x0 + x1) / 2), ("PinY", (y0 + y1) / 2),
                  ("Width", width), ("Height", height),
                  ("LocPinX", width / 2), ("LocPinY", height / 2), ("Angle", 0)):
-        cell(parent, n, number(v))
+        cell(parent, n, str(v) if isinstance(v, int) else number(v))
 
     fill, stroke = item.get("fill"), item.get("stroke")
     if fill:
@@ -116,7 +116,7 @@ def _shape_text(parent: ET.Element, item: dict, space: CoordinateSpace) -> None:
                  ("LocPinY", height / 2), ("Angle", 0), ("FillPattern", 0),
                  ("LinePattern", 0), ("VerticalAlign", 1), ("TextDirection", 0),
                  ("TextBkgnd", 0), ("TextBkgndTrans", 1)):
-        cell(parent, n, number(v))
+        cell(parent, n, str(v) if isinstance(v, int) else number(v))
 
     char_section = ET.SubElement(parent, tag("Section"), {"N": "Character"})
     char_row = ET.SubElement(char_section, tag("Row"), {"IX": "0"})

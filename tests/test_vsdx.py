@@ -44,6 +44,9 @@ def test_vsdx_contains_editable_shapes():
         assert any(c.get("N") == "FillForegnd" and c.get("V") == "#DBEAFE" for c in fill_cells)
         texts = shapes[2].findall(f".//{{{NS_MAIN}}}Text")
         assert len(texts) == 1 and texts[0].text == "geo_key PK"
+        # Readers such as libvisio reject decimal strings in integer flags.
+        for key in ['FillPattern', 'LinePattern', 'VerticalAlign', 'TextDirection', 'TextBkgnd']:
+            assert shapes[2].find(f"{{{NS_MAIN}}}Cell[@N='{key}']").get('V').isdigit()
         assert z.read("docProps/core.xml").find(b"Unit &amp; Test") >= 0
         assert b"image/png" not in b"".join(z.read(n) for n in z.namelist())
 

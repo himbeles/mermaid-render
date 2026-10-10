@@ -6,8 +6,9 @@
   const m = window.__mermaid;
   const source = window.__mermaidSource;
   const diagram = await m.mermaidAPI.getDiagramFromText(source);
+  if (diagram.type === 'sequence') return {type:'sequence'};
   if (!/^flowchart/.test(diagram.type)) {
-    throw new Error(`Connected VSDX export supports Mermaid flowcharts, not ${diagram.type}`);
+    throw new Error(`Connected VSDX export supports Mermaid flowcharts and sequence diagrams, not ${diagram.type}`);
   }
   const db = diagram.db;
   const data = typeof db.getData === 'function' ? db.getData() : {
@@ -172,9 +173,11 @@
       corner_radius: glyph?.tagName.toLowerCase() === 'rect' ? glyph.rx.baseVal.value : 0,
       fill: cssColor(cs.fill, '#E5EFFA'),
       stroke: cssColor(cs.stroke, '#4472C4'),
+      stroke_width: Number.parseFloat(cs.strokeWidth),
       font_color: cssColor(fontCss.fill, '#172D4A'),
       font_size: Number.parseFloat(fontCss.fontSize) || 14,
       is_group: Boolean(n.isGroup),
+      parent_id: n.parentId == null ? null : String(n.parentId),
       label_bounds: labelEl ? geometry(labelEl) : null,
       outlines, connection_points
     };
@@ -223,7 +226,8 @@
       arrow: e.arrowTypeEnd !== undefined ? e.arrowTypeEnd !== 'none' : e.type !== 'arrow_open',
       start_arrow: e.arrowTypeStart !== undefined && e.arrowTypeStart !== 'none',
       dash: e.pattern === 'dotted' || e.pattern === 'dashed',
-      stroke: edgePath ? cssColor(getComputedStyle(edgePath).stroke, '#4472C4') : '#4472C4'
+      stroke: edgePath ? cssColor(getComputedStyle(edgePath).stroke, '#4472C4') : '#4472C4',
+      stroke_width: edgePath ? Number.parseFloat(getComputedStyle(edgePath).strokeWidth) : 1.152
     };
   });
   return {nodes,edges};

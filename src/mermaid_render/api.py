@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 from .assets import ensure_browser, ensure_mermaid
 from .semantic import build_connected_vsdx
+from .sequence import build_sequence_vsdx
 from .vsdx import build_vsdx
 
 LOCAL_MERMAID_ORIGIN = "https://mermaid-render.local"
@@ -161,11 +162,16 @@ def _render_mermaid(
             else:
                 graph_js = files("mermaid_render").joinpath("graph_capture.js").read_text(encoding="utf-8")
                 graph = page.evaluate(graph_js)
-                # Do not silently emit a Visio drawing with disconnected nodes.
-                if not graph.get("nodes") or not graph.get("edges"):
-                    raise ValueError("Connected VSDX requires a flowchart containing nodes and edges")
-                result = build_connected_vsdx(graph["nodes"], graph["edges"], title=title,
-                                              connectors=visio_connectors)
+                if graph.get('type') == 'sequence':
+                    display = page.evaluate(files('mermaid_render').joinpath('capture.js').read_text(encoding='utf-8'))
+                    sequence = page.evaluate(files('mermaid_render').joinpath('sequence_capture.js').read_text(encoding='utf-8'), display)
+                    result = build_sequence_vsdx(sequence, title=title)
+                else:
+                    # Do not silently emit disconnected diagram artwork.
+                    if not graph.get("nodes") or not graph.get("edges"):
+                        raise ValueError("Connected VSDX requires a flowchart containing nodes and edges")
+                    result = build_connected_vsdx(graph["nodes"], graph["edges"], title=title,
+                                                  connectors=visio_connectors)
         finally:
             browser.close()
     return result
@@ -182,8 +188,9 @@ def convert(
     The extension selects the format unless explicitly specified. Without an
     output path, SVG is the default. PNG uses ``scale`` as a
     pixel density factor (default 2 = 192 dpi; 1 = 96 dpi). PDF remains vector based.
-    Connected VSDX currently supports Mermaid flowcharts only. Its connector
+    Connected VSDX supports Mermaid flowcharts and sequence diagrams. Flowchart
     routing is right-angle by default; choose straight or mermaid to override.
+    Sequence messages preserve their timeline with direct lines and self-loops.
     """
     if not math.isfinite(scale) or not (0.1 <= scale <= 4):
         raise ValueError("scale must be between 0.1 and 4")
@@ -206,7 +213,7 @@ def convert(
 
 
 def mermaid_to_vsdx(source: str, output: str | Path | None = None, **kwargs) -> bytes:
-    """Convert Mermaid flowchart to VSDX with glued native Visio connectors."""
+    """Convert a Mermaid flowchart or sequence diagram to connected VSDX."""
     return convert(source, output, format="vsdx", **kwargs)
 
 

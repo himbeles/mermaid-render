@@ -47,6 +47,12 @@ with ZipFile(BytesIO(vsdx)) as z:
     assert z.testzip() is None
     page = z.read('visio/pages/page1.xml')
     assert b'<Connects>' in page and b'<Connect ' in page
-print('Offline wheel smoke test passed: SVG, PNG, PDF and connected VSDX.')
+sequence = convert('sequenceDiagram\n participant A as Alice\n participant B as Bob\n A->>+B: Request\n B-->>-A: Reply', format='vsdx')
+with ZipFile(BytesIO(sequence)) as z:
+    assert z.testzip() is None
+    page = z.read('visio/pages/page1.xml')
+    assert b'Participant.A' in page and b'Type="Group"' in page
+    assert page.count(b'<Connect ') == 4
+print('Offline wheel smoke test passed: SVG, PNG, PDF, flowchart and sequence VSDX.')
 
 support.cleanup()

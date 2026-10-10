@@ -103,10 +103,10 @@ def test_format_validation(stub_dist, tmp_path):
 
 def test_unsupported_diagram_fails_for_connected_visio(stub_dist, tmp_path):
     f = stub_dist / 'mermaid.esm.min.mjs'
-    f.write_text(f.read_text().replace("type:'flowchart-v2'", "type:'sequence'"))
+    f.write_text(f.read_text().replace("type:'flowchart-v2'", "type:'classDiagram'"))
     with pytest.raises(Exception, match="Connected VSDX export supports Mermaid flowcharts"):
-        convert('sequenceDiagram', format='vsdx')
-    assert b'<svg' in convert('sequenceDiagram', format='svg')
+        convert('classDiagram', format='vsdx')
+    assert b'<svg' in convert('classDiagram', format='svg')
 
 
 @pytest.mark.parametrize('scale,dimensions', [(None, (800, 260)), (1, (400, 130)), (2, (800, 260))])

@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant API
+    participant DB as Database
+    User->>+API: Submit request
+    Note over API,DB: Validate and persist
+    loop Retry on conflict
+        API->>+DB: Save record
+        DB-->>-API: Result
+        API->>API: Check result
+    end
+    alt Saved
+        API-->>User: Confirmation
+    else Rejected
+        API--xUser: Validation error
+    end
+    deactivate API

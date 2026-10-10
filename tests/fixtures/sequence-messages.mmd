@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber 10 10
+    participant A as Alice
+    participant B as Bob
+    A->B: Solid without arrow
+    A-->B: Dashed without arrow
+    A->>B: Solid arrow
+    B-->>A: Dashed reply
+    A-xB: Solid cross
+    B--xA: Dashed cross
+    A-)B: Async
+    B--)A: Dashed async
+    A<<->>B: Bidirectional
+    A->>A: Self call
+    B-->>B: Self reply<br/>second line
+    Note left of A: Left note
+    Note right of B: Right note<br/>second line

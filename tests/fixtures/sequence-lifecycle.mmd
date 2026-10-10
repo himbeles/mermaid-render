@@ -1,0 +1,15 @@
+---
+config:
+  sequence:
+    mirrorActors: false
+---
+sequenceDiagram
+    participant A as API
+    create participant B as Job
+    A->>B: Start job
+    activate B
+    B->>+B: Nested work
+    B-->>-B: Done
+    deactivate B
+    destroy B
+    A-xB: Delete job

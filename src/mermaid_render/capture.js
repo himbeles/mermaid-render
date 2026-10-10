@@ -117,19 +117,22 @@
     svg.setAttribute('width',String(b.width));svg.setAttribute('height',String(b.height));
     Object.assign(svg.style,{width:`${b.width}px`,height:`${b.height}px`,maxWidth:'none'});
     const items=[];
+    // Stable DOM references associate artwork with semantic diagram objects.
+    const elementIds=new Map([...svg.querySelectorAll('*')].map((el,i)=>[el,i]));
+    function add(item, el) { if(item) items.push({...item,element:elementIds.get(el)}); }
     function walk(el) {
       const name=el.tagName.toLowerCase();
       if(SKIP.has(name) || (el instanceof SVGGraphicsElement && hidden(el)))return;
       if(name==='text') {
         const lines=[...el.children].filter(c=>c.tagName.toLowerCase()==='tspan'&&c.hasAttribute('x'));
         if(lines.length>=2) {
-          for(const l of lines){const t=textItem(l,l.textContent||'');if(t)items.push(t);}
+          for(const l of lines){add(textItem(l,l.textContent||''),el);}
         } else {
-          const t=textItem(el,el.textContent||'');if(t)items.push(t);
+          add(textItem(el,el.textContent||''),el);
         }
         return;
       }
-      const p=poly(el);if(p)items.push(p);
+      add(poly(el),el);
       for(const child of el.children)walk(child);
     }
     for(const child of svg.children)walk(child);

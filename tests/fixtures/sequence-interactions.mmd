@@ -1,0 +1,31 @@
+sequenceDiagram
+    actor C as Client
+    box rgb(235, 245, 255) Services
+        participant A as API
+        participant W as Worker
+    end
+    C->>+A: Request
+    Note over C,W: Shared context<br/>multiple lines
+    rect rgb(240, 250, 240)
+        par Work
+            A->>+W: Start
+            W-->>-A: Done
+        and Audit
+            A->>A: Record
+        end
+        opt Retry enabled
+            loop At most twice
+                A->>W: Retry
+                W-->>A: Done
+            end
+        end
+    end
+    critical Commit
+        A->>W: Commit
+    option Timeout
+        A-->>C: Retry later
+    end
+    break Invalid request
+        A--xC: Abort
+    end
+    A-->>-C: Complete

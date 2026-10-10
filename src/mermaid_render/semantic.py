@@ -2,7 +2,6 @@
 
 Accepts positioned Mermaid flowchart nodes and semantic source/target edges;
 creates native Visio 2D shapes, 1D connector shapes and glue records.
-Visio desktop behavior on opening/editing generated files is not yet verified.
 No Office, COM, or platform-specific API is used.
 """
 
@@ -61,7 +60,64 @@ def _validate(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Mapping[str, A
         a, b = str(edge["source"]), str(edge["target"])
         if a not in indexed or b not in indexed:
             raise ValueError(f"Unknown edge endpoint: {a!r} -> {b!r}")
+    for key, node in indexed.items():
+        seen = {key}
+        parent = node.get('parent_id')
+        while parent is not None:
+            parent = str(parent)
+            if parent in seen:
+                raise ValueError(f"Cyclic subgraph membership: {key}")
+            if parent not in indexed or not indexed[parent].get('is_group'):
+                raise ValueError(f"Unknown or non-container parent: {parent!r}")
+            seen.add(parent)
+            parent = indexed[parent].get('parent_id')
     return indexed
+
+
+def _container_relationships(shapes, nodes, edges, ids):
+    """Persist Visio container membership without changing page coordinates.
+
+    Containers are separate 2D shapes, not XML groups. Relationships records
+    are reciprocal and include ancestor containers and internal connectors.
+    https://learn.microsoft.com/office/client-developer/visio/relationships-cell-shape-layout-section
+    """
+    indexed = {str(n['id']): n for n in nodes}
+
+    def ancestors(node):
+        result = []
+        parent = node.get('parent_id')
+        while parent is not None:
+            parent = str(parent)
+            result.append(ids[parent])
+            parent = indexed[parent].get('parent_id')
+        return result
+
+    containers = {ids[str(n['id'])]: [] for n in nodes if n.get('is_group')}
+    memberships = {ids[str(n['id'])]: ancestors(n) for n in nodes}
+    for index, edge in enumerate(edges, start=len(nodes)+1):
+        source = memberships[ids[str(edge['source'])]]
+        target = memberships[ids[str(edge['target'])]]
+        memberships[index] = [container for container in source if container in target]
+    for member, parents in memberships.items():
+        for parent in parents:
+            containers[parent].append(member)
+    for shape in shapes:
+        index = int(shape.get('ID'))
+        relationships = []
+        if index in containers:
+            user = ET.Element(tag('Section'), {'N': 'User'})
+            row = ET.SubElement(user, tag('Row'), {'N': 'msvStructureType'})
+            ET.SubElement(row, tag('Cell'), {'N': 'Value', 'V': 'Container', 'U': 'STR', 'F': '"Container"'})
+            first_section = next((i for i, child in enumerate(shape) if child.tag == tag('Section')), len(shape))
+            shape.insert(first_section, user)
+            shape.insert(0, ET.Element(tag('Cell'), {'N': 'DisplayLevel', 'V': '-1'}))
+            relationships.append((1, containers[index]))
+        if memberships[index]:
+            relationships.append((4, memberships[index]))
+        if relationships:
+            terms = ['DEPENDSON('+','.join([str(kind)]+[f'Sheet.{member}!SheetRef()' for member in members])+')'
+                     for kind, members in relationships]
+            shape.insert(0, ET.Element(tag('Cell'), {'N': 'Relationships', 'V': '0', 'F': 'SUM('+','.join(terms)+')'}))
 
 
 def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: CoordinateSpace) -> None:
@@ -73,7 +129,8 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
                        ("LocPinX", w / 2), ("LocPinY", h / 2),
                        ("Angle", 0), ("FillForegnd", str(node.get("fill", "#E5EFFA"))),
                        ("FillPattern", 1), ("LineColor", str(node.get("stroke", "#4472C4"))),
-                       ("LineWeight", 0.012), ("LinePattern", 1),
+                       ("LineWeight", float(node.get('stroke_width', 1.152))*PX_TO_IN),
+                       ("LinePattern", 0 if node.get('stroke_width') == 0 else 1),
                        ("VerticalAlign", 1), ("ObjType", 1)):
         _cell(shape, key, value)
     geometry = ET.SubElement(shape, tag("Section"), {"N": "Geometry", "IX": "0"})
@@ -261,7 +318,7 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
                ids: Mapping[str, int], nodes: Mapping[str, Mapping[str, Any]], space: CoordinateSpace,
                routing: str) -> None:
     source, target = str(edge["source"]), str(edge["target"])
-    loop = source == target
+    loop = source == target and not edge.get('preserve_route')
     s_side, t_side = ("right", "top") if loop else _port(nodes[source], nodes[target])
     rendered_route = edge.get('route') if not loop else None
     x0, y0 = space.point(*_anchor(nodes[source], s_side))
@@ -313,7 +370,8 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
         _cell(shape, key, value, formula)
     for key, value in (("ObjType", 2), ("FillPattern", 0),
                        ("LineColor", str(edge.get("stroke", "#4472C4"))),
-                       ("LineWeight", 0.012), ("LinePattern", 2 if edge.get("dash") else 1),
+                       ("LineWeight", float(edge.get('stroke_width', 1.152))*PX_TO_IN),
+                       ("LinePattern", 0 if edge.get('stroke_width') == 0 else 2 if edge.get("dash") else 1),
                        ("BeginArrow", 13 if edge.get("start_arrow") else 0),
                        ("EndArrow", 13 if edge.get("arrow", True) else 0)):
         _cell(shape, key, value)
@@ -388,7 +446,7 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
         char = ET.SubElement(shape, tag("Section"), {"N": "Character"})
         row = ET.SubElement(char, tag("Row"), {"IX": "0"})
         _cell(row, "Color", str(edge.get('font_color', '#172D4A')))
-        _cell(row, "Size", 12 * PX_TO_IN)
+        _cell(row, "Size", float(edge.get('font_size', 12)) * PX_TO_IN)
         para = ET.SubElement(shape, tag("Section"), {"N": "Paragraph"})
         row = ET.SubElement(para, tag("Row"), {"IX": "0"})
         _cell(row, "HorzAlign", 1)
@@ -424,7 +482,6 @@ def build_connected_vsdx(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Map
     Node coordinates are in SVG pixels with top-left origin:
       {"id":"a", "x":10, "y":10, "width":120, "height":50, "text":"A"}
     Edges: {"source":"a", "target":"b"}. Output is OS-independent.
-    Visio connector behavior remains untested with the actual Visio application.
     """
     if connectors not in {'right-angle', 'straight', 'mermaid'}:
         raise ValueError("connectors must be 'right-angle', 'straight', or 'mermaid'")
@@ -460,6 +517,7 @@ def build_connected_vsdx(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Map
         _node_shape(shapes, i, node, space)
     for i, edge in enumerate(edges, start=len(nodes) + 1):
         _connector(shapes, connects, i, edge, ids, indexed, space, connectors)
+    _container_relationships(shapes, nodes, edges, ids)
     if len(connects):
         contents.append(connects)
     output = BytesIO()

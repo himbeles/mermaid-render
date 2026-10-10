@@ -25,7 +25,15 @@ The output extension selects the format; use `--format` to select it explicitly.
 
 - **PNG:** Defaults to twice the SVG's pixel dimensions. Use `--scale 1` for 96 dpi, or `--background transparent` for a transparent background.
 - **PDF:** A single diagram-sized vector page. Scale applies only to PNG.
-- **VSDX:** Flowcharts only, with native shapes and glued connectors. Right-angle connectors are the default; choose `--visio-connectors straight` or `--visio-connectors mermaid` for direct lines or detailed Mermaid curves. Mermaid attachment positions and standard shape connection points are retained. Self-loops remain visible in all modes. Editing/rerouting in Microsoft Visio has not yet been independently verified.
+- **VSDX:** Flowcharts and sequence diagrams, with editable shapes and glued connectors. Flowchart subgraphs become native Visio containers with member relationships, including nested subgraphs and internal connectors. Flowcharts default to right-angle connectors; choose `--visio-connectors straight` or `--visio-connectors mermaid` for direct lines or detailed Mermaid curves. Mermaid attachment positions, standard shape connection points, and rendered border widths are retained.
+
+Sequence diagrams preserve participants and actors, lifelines, nested activations, message labels and numbering, notes, interaction frames, and participant creation/destruction. Each participant's artwork forms one movable group, with messages attached at their chronological positions. Messages use straight lines and simple rectangular self-loops; `--visio-connectors` applies to flowcharts. Try `examples/sequence.mmd`:
+
+```bash
+mermaid-render examples/sequence.mmd -o sequence.vsdx
+```
+
+Other Mermaid diagram types currently support SVG, PNG, and PDF output.
 
 ### Python usage
 
@@ -81,7 +89,7 @@ Download a **bundled wheel** from [GitHub Releases](https://github.com/himbeles/
 Transfer the wheel to the target machine and install it using its full filename, for example:
 
 ```bash
-uv tool install ./mermaid_render-0.9.1-py3-none-macosx_13_0_arm64.whl
+uv tool install ./mermaid_render-0.10.0-py3-none-macosx_13_0_arm64.whl
 mermaid-render diagram.mmd -o diagram.vsdx
 ```
 
@@ -105,7 +113,7 @@ uv run mermaid-render examples/example.mmd -o diagram.vsdx
 
 Rendering and browser tests automatically prepare missing support files. On Linux, install browser system libraries first with `uv run python -m playwright install-deps chromium`.
 
-The rendering API lives in `src/mermaid_render/api.py`; connected VSDX generation in `semantic.py`; Mermaid graph and SVG capture in `graph_capture.js`; runtime installation in `assets.py`. Add regression tests for rendering or connector changes. Visual checks in an independent VSDX viewer are useful alongside automated tests.
+The rendering API lives in `src/mermaid_render/api.py`; connected VSDX generation in `semantic.py` (flowcharts) and `sequence.py`; Mermaid semantics and artwork capture in the `*_capture.js` files and `capture.js`; runtime installation in `assets.py`. Add regression tests for rendering or connector changes. Visual checks in an independent VSDX viewer are useful alongside automated tests.
 
 ### Build and release
 
