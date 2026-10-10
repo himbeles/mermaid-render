@@ -32,6 +32,17 @@ def _run(*args: str) -> str:
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout
 
 
+def _linked(binary: Path) -> dict[str, Path]:
+    try:
+        return dependencies(_run('ldd', str(binary)))
+    except subprocess.CalledProcessError as exc:
+        # Playwright's FFmpeg helper is a static ELF binary.
+        output = (exc.stdout or '') + (exc.stderr or '')
+        if 'not a dynamic executable' in output or 'statically linked' in output:
+            return {}
+        raise
+
+
 def _license(path: Path, destination: Path) -> None:
     # Debian/Ubuntu's copyright files identify the license and source location
     # for each redistributed library/font, including its upstream components.
@@ -82,7 +93,7 @@ def bundle_linux(browsers: Path, executable: Path) -> None:
         if binary in visited:
             continue
         visited.add(binary)
-        resolved = dependencies(_run('ldd', str(binary)))
+        resolved = _linked(binary)
         if binary in available.values():
             resolved[binary.name] = binary
         for soname, source in resolved.items():

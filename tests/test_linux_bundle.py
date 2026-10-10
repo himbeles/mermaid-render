@@ -73,3 +73,12 @@ def test_private_linux_runtime_survives_setup_and_does_not_reuse_unbundled_suppo
 def test_unbundled_browser_environment_is_unchanged(tmp_path, monkeypatch):
     monkeypatch.setattr(assets.platform, 'system', lambda: 'Linux')
     assert assets.browser_environment(tmp_path / 'shell') == os.environ.copy()
+
+
+def test_static_browser_helpers_have_no_shared_dependencies(monkeypatch):
+    import bundle_linux
+    import subprocess
+    def static(*args):
+        raise subprocess.CalledProcessError(1, args, stderr='not a dynamic executable')
+    monkeypatch.setattr(bundle_linux, '_run', static)
+    assert bundle_linux._linked(Path('ffmpeg-linux')) == {}

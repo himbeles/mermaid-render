@@ -71,7 +71,7 @@ if not lightweight:
     # setup must copy the complete browser, libraries, fonts and notices; render
     # again from persistent support data, outside the installed wheel's paths.
     _, persisted = assets.setup_runtime()
-    assert persisted.is_relative_to(Path(support.name))
+    assert persisted.is_relative_to(Path(support.name).resolve())
     assert assets.ensure_browser() == persisted
     assert convert(src, format='png').startswith(b'\x89PNG\r\n\x1a\n')
 
