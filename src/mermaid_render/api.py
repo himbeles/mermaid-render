@@ -6,7 +6,7 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from .assets import ensure_browser, ensure_mermaid
+from .assets import browser_environment, ensure_browser, ensure_mermaid
 from .semantic import build_connected_vsdx
 from .sequence import build_sequence_vsdx
 from .vsdx import build_vsdx
@@ -42,7 +42,9 @@ def _serve_local_mermaid(page, dist: Path) -> str:
 
 
 def _browser(playwright):
-    return playwright.chromium.launch(headless=True, executable_path=str(ensure_browser()))
+    executable = ensure_browser()
+    return playwright.chromium.launch(headless=True, executable_path=str(executable),
+                                      env=browser_environment(executable))
 
 
 def svg_to_vsdx(

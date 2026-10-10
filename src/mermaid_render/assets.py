@@ -5,6 +5,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -60,7 +61,29 @@ def browser_in(directory: Path) -> Path | None:
         return None
     if os.name != 'nt' and not os.access(executable, os.X_OK):
         return None
+    for name in info.get('linux_runtime', {}).get('files', []):
+        relative = Path(name)
+        if relative.is_absolute() or '..' in relative.parts:
+            raise ValueError('Invalid Linux runtime path')
+        path = (directory / relative).resolve()
+        path.relative_to(directory.resolve())
+        if not path.is_file():
+            return None
     return executable
+
+
+def browser_environment(executable: Path) -> dict[str, str]:
+    """Use private Linux libraries and fonts only in the browser subprocess."""
+    env = os.environ.copy()
+    runtime = executable.parent / 'linux-runtime'
+    if platform.system() == 'Linux' and (runtime / 'fonts.conf').is_file():
+        library_path = str(runtime / 'lib')
+        if env.get('LD_LIBRARY_PATH'):
+            library_path += os.pathsep + env['LD_LIBRARY_PATH']
+        env['LD_LIBRARY_PATH'] = library_path
+        env['FONTCONFIG_FILE'] = str(runtime / 'fonts.conf')
+        env['FONTCONFIG_PATH'] = str(runtime)
+    return env
 
 
 def bundled_browser() -> Path | None:
@@ -139,6 +162,15 @@ def ensure_mermaid(*, persist: bool = False) -> Path:
 
 def ensure_browser(*, persist: bool = False) -> Path:
     key = f'playwright-{browser_version()}-{platform.system().lower()}-{platform.machine().lower()}'
+    manifest = package_root() / 'browsers' / 'BROWSER_INFO.json'
+    if platform.system() == 'Linux' and manifest.is_file():
+        bundle_id = json.loads(manifest.read_text()).get('linux_runtime', {}).get('id')
+        if bundle_id is not None:
+            if not isinstance(bundle_id, str) or not re.fullmatch('[0-9a-f]{16}', bundle_id):
+                raise ValueError('Invalid Linux runtime bundle ID')
+            # An older downloaded browser lacks private libraries. Do not let
+            # that support directory mask a complete offline wheel's runtime.
+            key += f'-{bundle_id}'
     return _ensure('Chromium', package_root() / 'browsers',
                    data_root() / 'browsers' / key, browser_in, install_browser, persist=persist)
 
