@@ -135,4 +135,8 @@ uv run python scripts/test_wheel_install.py dist/bundled/*.whl
 
 ## License
 
-MIT; see [LICENSE](LICENSE). Adapted from [FBklyra/mermaid-to-visio](https://github.com/FBklyra/mermaid-to-visio). Bundled Mermaid, Chromium, and Playwright retain their upstream licenses and notices.
+MIT; see [LICENSE](LICENSE).
+
+Originally adapted from [Freddy Beltran's mermaid-to-visio project](https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX generation retain that heritage; connected flowchart and sequence-diagram export were developed further in mermaid-render.
+
+Bundled Mermaid, Chromium, and Playwright retain their upstream licenses and notices.

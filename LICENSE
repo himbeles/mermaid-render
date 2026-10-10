@@ -2,7 +2,12 @@ MIT License
 
 Copyright (c) 2026 Mermaid Visio Python port contributors
 
-This project is a Python adaptation of the Mermaid-to-Visio implementation:
+Originally adapted from Freddy Beltran's mermaid-to-visio project
+(https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX
+generation retain that heritage; connected flowchart and sequence-diagram
+export were developed further in mermaid-render.
+
+Upstream copyright:
 Copyright (c) 2026 Freddy Beltran <freddy.beltran@klyra.tech>, Klyra (https://klyra.tech),
 and the Stratos platform (https://mystratos.ai)
 
