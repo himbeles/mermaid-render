@@ -153,7 +153,16 @@ def _render_mermaid(
                 const {svg} = await m.render('mermaid_render_graph', source);
                 document.getElementById('mount').innerHTML = svg;
                 window.__mermaidSource = source;
-                return svg;
+                const rendered = document.querySelector('#mount svg');
+                // Mermaid's SVG-text labels use translucent backgrounds,
+                // unlike its HTML labels. Mask connectors behind the text
+                // while retaining the theme's background color. Normalize
+                // the DOM before every export, including image previews.
+                for (const rect of rendered.querySelectorAll('.edgeLabel rect.background')) {
+                    rect.style.setProperty('opacity', '1', 'important');
+                    rect.style.setProperty('fill-opacity', '1', 'important');
+                }
+                return rendered.outerHTML;
             }""", {"source": source, "theme": theme})
             if format == "svg":
                 result = svg.encode("utf-8")

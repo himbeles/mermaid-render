@@ -230,6 +230,44 @@ def test_explicit_theme_overrides_default(theme):
     assert ('#ECECFF' in svg) == (theme == 'default')
 
 
+@pytest.mark.parametrize('theme', ['redux-color', 'default', 'dark'])
+def test_arrow_labels_mask_connectors_in_svg_and_visio(theme):
+    from mermaid_render import convert
+    from mermaid_render.api import _browser
+    from playwright.sync_api import sync_playwright
+
+    source = 'flowchart LR; A[Draft] -->|Yes| B[Publish]; B -->|Try again| A'
+    svg = convert(source, format='svg', theme=theme)
+    # Reopen the serialized export: the fix must survive outside the renderer.
+    with sync_playwright() as playwright:
+        browser = _browser(playwright)
+        try:
+            page = browser.new_page()
+            page.set_content(svg.decode())
+            backgrounds = page.locator('.edgeLabel rect.background').evaluate_all('''els =>
+                els.map(el => {
+                    const css = getComputedStyle(el);
+                    return {fill:css.fill, opacity:css.opacity, fillOpacity:css.fillOpacity};
+                })''')
+        finally:
+            browser.close()
+    assert len(backgrounds) == 2
+    assert all(b['opacity'] == '1' and b['fillOpacity'] == '1' for b in backgrounds)
+    assert all(b['fill'] != 'none' for b in backgrounds)
+    with ZipFile(BytesIO(convert(source, format='vsdx', theme=theme))) as archive:
+        page = ET.fromstring(archive.read('visio/pages/page1.xml'))
+    ns = {'v': NS_MAIN}
+    labels = {s.findtext('v:Text', namespaces=ns): s
+              for s in page.findall('v:Shapes/v:Shape', ns)}
+    for text in ['Yes', 'Try again']:
+        shape = labels[text]
+        assert shape.find("v:Cell[@N='TextBkgndTrans']", ns).get('V') == '0'
+        background = shape.find("v:Cell[@N='TextBkgnd']", ns).get('V')
+        assert background != '0'
+        if theme == 'redux-color':
+            assert background == '#CCCCCC'
+
+
 def test_dagre_basis_connectors_preserve_cubic_curves():
     from mermaid_render import convert
 
