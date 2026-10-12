@@ -1,6 +1,6 @@
 """Platform-independent Visio ShapeSheet connector writer.
 
-Accepts positioned Mermaid flowchart nodes and semantic source/target edges;
+Accepts positioned Mermaid graph nodes and semantic source/target edges;
 creates native Visio 2D shapes, 1D connector shapes and glue records.
 No Office, COM, or platform-specific API is used.
 """
@@ -28,7 +28,7 @@ _NATIVE_KINDS = {
     'rect', 'squarerect', 'roundedrect', 'round', 'rounded', 'rounded-rectangle',
     'stadium', 'pill', 'terminal', 'decision', 'diamond', 'diam', 'rhombus', 'question',
     'hexagon', 'hex', 'prepare', 'cylinder', 'cyl', 'database',
-    'circle', 'ellipse', 'doublecircle', 'start', 'end',
+    'circle', 'ellipse', 'doublecircle', 'start', 'end', 'state-start', 'state-end',
 }
 
 
@@ -130,7 +130,7 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
                        ("Angle", 0), ("FillForegnd", str(node.get("fill", "#E5EFFA"))),
                        ("FillPattern", 1), ("LineColor", str(node.get("stroke", "#4472C4"))),
                        ("LineWeight", float(node.get('stroke_width', 1.152))*PX_TO_IN),
-                       ("LinePattern", 0 if node.get('stroke_width') == 0 else 1),
+                       ("LinePattern", 0 if node.get('stroke_width') == 0 else 2 if node.get('dash') else 1),
                        ("VerticalAlign", 1), ("ObjType", 1)):
         _cell(shape, key, value)
     geometry = ET.SubElement(shape, tag("Section"), {"N": "Geometry", "IX": "0"})
@@ -150,7 +150,7 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
         bottom = tuple((w/2+w/2*cos(pi+i*pi/24), ry+ry*sin(pi+i*pi/24)) for i in range(25))
         top = tuple((w/2+w/2*cos(i*pi/24), h-ry+ry*sin(i*pi/24)) for i in range(25))
         outline = bottom + top + (bottom[0],)
-    elif kind in {"circle", "ellipse", "doublecircle", "start", "end"}:
+    elif kind in {"circle", "ellipse", "doublecircle", "start", "end", "state-start", "state-end"}:
         outline = tuple((w/2+(w/2)*cos(2*pi*i/48), h/2+(h/2)*sin(2*pi*i/48)) for i in range(49))
     else:
         outline = ((0, 0), (w, 0), (w, h), (0, h), (0, 0))
@@ -158,6 +158,17 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
         row = ET.SubElement(geometry, tag("Row"), {"IX": str(i + 1), "T": "MoveTo" if i == 0 else "LineTo"})
         _cell(row, "X", xx)
         _cell(row, "Y", yy)
+
+    if kind == 'state-end':
+        # UML final state: an unfilled outer ring around a solid inner disk.
+        _cell(geometry, 'NoFill', 1)
+        disk = ET.SubElement(shape, tag('Section'), {'N': 'Geometry', 'IX': '1'})
+        _cell(disk, 'NoLine', 1)
+        for i in range(49):
+            angle = 2*pi*i/48
+            row = ET.SubElement(disk, tag('Row'), {'IX': str(i+1), 'T': 'MoveTo' if i == 0 else 'LineTo'})
+            _cell(row, 'X', w/2+w/3*cos(angle), f'Width*{number(.5+cos(angle)/3)}')
+            _cell(row, 'Y', h/2+h/3*sin(angle), f'Height*{number(.5+sin(angle)/3)}')
 
     if kind in {"cylinder", "cyl", "database"}:
         rim = ET.SubElement(shape, tag("Section"), {"N": "Geometry", "IX": "1"})
@@ -234,9 +245,27 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
         _cell(row, "Color", str(node.get("font_color", "#172D4A")))
         _cell(row, "Size", float(node.get("font_size", 14)) * PX_TO_IN)
         para = ET.SubElement(shape, tag("Section"), {"N": "Paragraph"})
-        row = ET.SubElement(para, tag("Row"), {"IX": "0"})
-        _cell(row, "HorzAlign", 1)
-        ET.SubElement(shape, tag("Text")).text = text
+        rows = node.get('text_rows') or []
+        if len(rows) > 1:
+            # Keep title/description compartment spacing while leaving all
+            # text editable on the state itself.
+            content = ET.SubElement(shape, tag('Text'))
+            _cell(shape, 'LeftMargin', .04)
+            _cell(shape, 'RightMargin', .04)
+            for ix, line in enumerate(rows):
+                row = ET.SubElement(para, tag('Row'), {'IX': str(ix)})
+                _cell(row, 'HorzAlign', 1 if ix == 0 else 0)
+                spacing = float(line['height'])*1.1
+                _cell(row, 'SpLine', spacing*PX_TO_IN)
+                if ix+1 < len(rows):
+                    gap = float(rows[ix+1]['y'])-float(line['y'])-spacing
+                    _cell(row, 'SpAfter', max(0, gap)*PX_TO_IN)
+                marker = ET.SubElement(content, tag('pp'), {'IX': str(ix)})
+                marker.tail = line['text'] + ('\n' if ix+1 < len(rows) else '')
+        else:
+            row = ET.SubElement(para, tag("Row"), {"IX": "0"})
+            _cell(row, "HorzAlign", 1)
+            ET.SubElement(shape, tag("Text")).text = text
 
 
 def _port(a: Mapping[str, Any], b: Mapping[str, Any]) -> tuple[str, str]:
@@ -372,8 +401,8 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
                        ("LineColor", str(edge.get("stroke", "#4472C4"))),
                        ("LineWeight", float(edge.get('stroke_width', 1.152))*PX_TO_IN),
                        ("LinePattern", 0 if edge.get('stroke_width') == 0 else 2 if edge.get("dash") else 1),
-                       ("BeginArrow", 13 if edge.get("start_arrow") else 0),
-                       ("EndArrow", 13 if edge.get("arrow", True) else 0)):
+                       ("BeginArrow", (1 if edge.get('open_arrow') else 13) if edge.get("start_arrow") else 0),
+                       ("EndArrow", (1 if edge.get('open_arrow') else 13) if edge.get("arrow", True) else 0)):
         _cell(shape, key, value)
     if routing != 'mermaid':
         # Native ShapeSheet routing settings, deliberately left unlocked so

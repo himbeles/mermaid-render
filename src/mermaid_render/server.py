@@ -34,9 +34,9 @@ def render_mermaid(
     format defaults to the output extension, or SVG if it has no extension.
     An explicit format must match the output extension. Missing directories
     are created, and existing output is replaced only after a successful render.
-    VSDX supports flowcharts and sequence diagrams; use SVG/PNG/PDF for other
+    VSDX supports flowcharts, sequence diagrams, and state diagrams; use SVG/PNG/PDF for other
     Mermaid diagram types. scale controls PNG density (default 2). The default
-    theme is redux-color. visio_connectors controls flowchart routing only.
+    theme is redux-color. visio_connectors controls flowchart and state-diagram routing.
     Runtime support files are prepared automatically on the first render.
     Returns output_path, format, and mime_type for the saved file.
     """

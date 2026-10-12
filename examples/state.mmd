@@ -1,0 +1,18 @@
+stateDiagram-v2
+    [*] --> Off
+    Off --> Starting : power on
+    Starting --> Ready : checks passed
+    Starting --> Fault : check failed
+    Ready --> Running : begin
+
+    state Running {
+        [*] --> Acquire
+        Acquire --> Process : data ready
+        Process --> Complete : finished
+        Complete --> [*]
+    }
+
+    Running --> Ready : stop
+    Fault --> Starting : reset
+    Ready --> [*] : power off
+    note right of Process : Processing data

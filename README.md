@@ -25,12 +25,18 @@ The output extension selects the format; use `--format` to select it explicitly.
 
 - **PNG:** Defaults to twice the SVG's pixel dimensions. Use `--scale 1` for 96 dpi, or `--background transparent` for a transparent background.
 - **PDF:** A single diagram-sized vector page. Scale applies only to PNG.
-- **VSDX:** Flowcharts and sequence diagrams, with editable shapes and glued connectors. Flowchart subgraphs become native Visio containers with member relationships, including nested subgraphs and internal connectors. Flowcharts default to right-angle connectors; choose `--visio-connectors straight` or `--visio-connectors mermaid` for direct lines or detailed Mermaid curves. Mermaid attachment positions, standard shape connection points, and rendered border widths are retained.
+- **VSDX:** Flowcharts, sequence diagrams, and state diagrams, with editable shapes and glued connectors. Flowchart subgraphs become native Visio containers with member relationships, including nested subgraphs and internal connectors. Flowcharts and state diagrams default to right-angle connectors; choose `--visio-connectors straight` or `--visio-connectors mermaid` for direct lines or detailed Mermaid curves. Mermaid attachment positions, standard shape connection points, and rendered border widths are retained.
 
-Sequence diagrams preserve participants and actors, lifelines, nested activations, message labels and numbering, notes, interaction frames, and participant creation/destruction. Each participant's artwork forms one movable group, with messages attached at their chronological positions. Messages use straight lines and simple rectangular self-loops; `--visio-connectors` applies to flowcharts. Try `examples/sequence.mmd`:
+Sequence diagrams preserve participants and actors, lifelines, nested activations, message labels and numbering, notes, interaction frames, and participant creation/destruction. Each participant's artwork forms one movable group, with messages attached at their chronological positions. Messages use straight lines and simple rectangular self-loops; `--visio-connectors` applies to flowcharts and state diagrams. Try `examples/sequence.mmd`:
 
 ```bash
 mermaid-render examples/sequence.mmd -o sequence.vsdx
+```
+
+State diagrams preserve initial/final symbols, choices, fork/join bars, labeled transitions and self-loops, multiline descriptions, notes, and nested or concurrent states. Composite states become native Visio containers, and transitions remain glued to editable shapes. Try `examples/state.mmd`:
+
+```bash
+mermaid-render examples/state.mmd -o state.vsdx
 ```
 
 Other Mermaid diagram types currently support SVG, PNG, and PDF output.
@@ -154,7 +160,7 @@ uv run mermaid-render examples/example.mmd -o diagram.vsdx
 
 Rendering and browser tests automatically prepare missing support files. On Linux, install browser system libraries first with `uv run python -m playwright install-deps chromium`.
 
-The rendering API lives in `src/mermaid_render/api.py`; connected VSDX generation in `semantic.py` (flowcharts) and `sequence.py`; Mermaid semantics and artwork capture in the `*_capture.js` files and `capture.js`; runtime installation in `assets.py`. Add regression tests for rendering or connector changes. Visual checks in an independent VSDX viewer are useful alongside automated tests.
+The rendering API lives in `src/mermaid_render/api.py`; connected VSDX generation in `semantic.py` (flowcharts and state diagrams) and `sequence.py`; Mermaid semantics and artwork capture in the `*_capture.js` files and `capture.js`; runtime installation in `assets.py`. Add regression tests for rendering or connector changes. Visual checks in an independent VSDX viewer are useful alongside automated tests.
 
 ### Build and release
 
@@ -178,6 +184,6 @@ uv run python scripts/test_wheel_install.py dist/bundled/*.whl
 
 MIT; see [LICENSE](LICENSE).
 
-Originally adapted from [Freddy Beltran's mermaid-to-visio project](https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX generation retain that heritage; connected flowchart and sequence-diagram export were developed further in mermaid-render.
+Originally adapted from [Freddy Beltran's mermaid-to-visio project](https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX generation retain that heritage; connected flowchart, sequence-diagram, and state-diagram export were developed further in mermaid-render.
 
 Bundled Mermaid, Chromium, and Playwright retain their upstream licenses and notices.
