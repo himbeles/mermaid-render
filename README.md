@@ -57,6 +57,47 @@ svg_bytes = convert(source)  # Without an output path, returns SVG bytes
 
 `convert` returns bytes for every format and writes them when an output path is supplied. Use `theme=`, `scale=`, and `background=` to customize rendering.
 
+### MCP server
+
+Install optional MCP support:
+
+```bash
+uv tool install --upgrade 'mermaid-render[mcp]'
+```
+
+Add the stdio server to your MCP client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "mermaid-render": {
+      "command": "mermaid-render-mcp"
+    }
+  }
+}
+```
+
+The server provides one tool, `render_mermaid`. Supply either Mermaid `source`
+or an `input_path` ending in `.mmd`/`.mermaid`, plus an `output_path`:
+
+```json
+{
+  "source": "flowchart LR; A[Input] -->|Process| B[Output]",
+  "output_path": "/absolute/path/diagram.svg"
+}
+```
+
+The output extension selects SVG, PNG, PDF, or VSDX. Without an extension,
+the server appends `.svg`; an explicit `format` overrides the default and must
+match any supplied extension. The result contains the absolute `output_path`,
+`format`, and `mime_type`. Existing output is replaced only after rendering succeeds.
+Use absolute paths: relative paths resolve from the server's working directory.
+
+Optional arguments are `theme`, `title`, `background`, `scale`, and
+`visio_connectors`, with the same defaults as the Python API. Runtime setup is
+automatic. For offline use, install a bundled wheel with its `mcp` extra and
+the MCP dependencies available in your environment.
+
 ### Runtime support files
 
 Support files persist in user application data, rather than a temporary cache:
@@ -89,7 +130,7 @@ Download a **bundled wheel** from [GitHub Releases](https://github.com/himbeles/
 Transfer the wheel to the target machine and install it using its full filename, for example:
 
 ```bash
-uv tool install ./mermaid_render-0.10.1-py3-none-macosx_13_0_arm64.whl
+uv tool install ./mermaid_render-0.11.0-py3-none-macosx_13_0_arm64.whl
 mermaid-render diagram.mmd -o diagram.vsdx
 ```
 
