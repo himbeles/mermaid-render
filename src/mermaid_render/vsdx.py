@@ -37,6 +37,13 @@ def cell(parent: ET.Element, name: str, value: Any) -> ET.Element:
     return ET.SubElement(parent, tag("Cell"), {"N": name, "V": str(value)})
 
 
+def _character_spacing(row: ET.Element) -> None:
+    # Rich-text runs do not inherit omitted cells from Character row zero.
+    # Keep glyph advance explicit even without an inherited document style.
+    cell(row, "FontScale", "1")
+    cell(row, "Letterspace", "0")
+
+
 def xml_bytes(root: ET.Element) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -120,6 +127,7 @@ def _shape_text(parent: ET.Element, item: dict, space: CoordinateSpace) -> None:
 
     char_section = ET.SubElement(parent, tag("Section"), {"N": "Character"})
     char_row = ET.SubElement(char_section, tag("Row"), {"IX": "0"})
+    _character_spacing(char_row)
     cell(char_row, "Color", item.get("fill") or "#000000")
     cell(char_row, "Size", number(float(item.get("fontPx", 12)) * PX_TO_IN))
     cell(char_row, "Style", str(int(bool(item.get("bold"))) | (int(bool(item.get("italic"))) << 1)))

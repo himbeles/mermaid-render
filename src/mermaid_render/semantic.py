@@ -13,7 +13,7 @@ from typing import Any, Mapping, Sequence
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from .vsdx import CoordinateSpace, PX_TO_IN, _parts, _shape_text, cell, number, tag, xml_bytes
+from .vsdx import CoordinateSpace, PX_TO_IN, _character_spacing, _parts, _shape_text, cell, number, tag, xml_bytes
 
 
 # Sections are enumerated starting at zero; Visio displays them as X1..X4.
@@ -242,6 +242,7 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
                 _cell(shape, key, value)
         char = ET.SubElement(shape, tag("Section"), {"N": "Character"})
         row = ET.SubElement(char, tag("Row"), {"IX": "0"})
+        _character_spacing(row)
         _cell(row, "Color", str(node.get("font_color", "#172D4A")))
         _cell(row, "Size", float(node.get("font_size", 14)) * PX_TO_IN)
         para = ET.SubElement(shape, tag("Section"), {"N": "Paragraph"})
@@ -265,6 +266,7 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
                 marker = ET.SubElement(content, tag('pp'), {'IX': str(ix)})
                 if 'align' in line:
                     char_row = ET.SubElement(char, tag('Row'), {'IX': str(ix+1)})
+                    _character_spacing(char_row)
                     _cell(char_row, 'Color', line['color'])
                     _cell(char_row, 'Size', line['font_size']*PX_TO_IN)
                     _cell(char_row, 'Style', int(line['bold']) | int(line['italic']) << 1 | int(line['underline']) << 2)
@@ -514,6 +516,7 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
             _cell(shape, key, value, formula)
         char = ET.SubElement(shape, tag("Section"), {"N": "Character"})
         row = ET.SubElement(char, tag("Row"), {"IX": "0"})
+        _character_spacing(row)
         _cell(row, "Color", str(edge.get('font_color', '#172D4A')))
         _cell(row, "Size", float(edge.get('font_size', 12)) * PX_TO_IN)
         para = ET.SubElement(shape, tag("Section"), {"N": "Paragraph"})

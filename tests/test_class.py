@@ -129,6 +129,17 @@ def test_class_export(name, theme, monkeypatch):
     nodes, edges = graph['nodes'], graph['edges']
     ids = {n['id']: str(i) for i,n in enumerate(nodes, 1)}
     shapes = {s.get('ID'):s for s in page.findall('v:Shapes/v:Shape', NS)}
+    # Visio must not fall back to zero-width advances in sparse rich-text
+    # rows, even when a tolerant viewer supplies its own spacing defaults.
+    for shape in shapes.values():
+        characters = {row.get('IX'): row for row in shape.findall("v:Section[@N='Character']/v:Row", NS)}
+        for row in characters.values():
+            assert row.find("v:Cell[@N='FontScale']", NS).get('V') == '1'
+            assert row.find("v:Cell[@N='Letterspace']", NS).get('V') == '0'
+        for run in shape.findall('v:Text/v:cp', NS):
+            row = characters[run.get('IX')]
+            assert float(row.find("v:Cell[@N='Size']", NS).get('V')) > 0
+            assert run.tail and run.tail.strip()
     glue = page.findall('v:Connects/v:Connect', NS)
     assert len(glue) == 2*len(edges)
     marker_types = {'none': '0', 'extension': '14', 'aggregation': '22', 'composition': '0', 'dependency':'1', 'lollipop':'20'}
