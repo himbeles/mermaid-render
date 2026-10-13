@@ -137,7 +137,6 @@ Download a **bundled wheel** from [GitHub Releases](https://github.com/himbeles/
 | Linux x86-64 | `linux_x86_64.whl` |
 | Windows x86-64 | `win_amd64.whl` |
 | macOS Apple Silicon | `macosx_*_arm64.whl` |
-| macOS Intel | `macosx_*_x86_64.whl` |
 
 Transfer the wheel to the target machine and install it using its full filename, for example:
 
@@ -184,7 +183,7 @@ uv run python scripts/build_platform_wheel.py --outdir dist/bundled
 uv run python scripts/test_wheel_install.py dist/bundled/*.whl
 ```
 
-[GitHub Actions](.github/workflows/bundled-wheels.yml) builds and tests lightweight distributions plus four platform-specific wheels. To release, update `project.version` in `pyproject.toml`, run `uv lock`, commit, and push a matching `v<version>` tag. The workflow publishes lightweight distributions to PyPI through Trusted Publishing and attaches all distributions to GitHub Releases. Main-branch pushes, pull requests, and manual runs build without publishing.
+[GitHub Actions](.github/workflows/bundled-wheels.yml) builds and tests lightweight distributions plus three platform-specific wheels: Linux x86-64, Windows x86-64, and macOS Apple Silicon. To release, update `project.version` in `pyproject.toml`, run `uv lock`, commit, and push a matching `v<version>` tag. The workflow publishes lightweight distributions to PyPI through Trusted Publishing and attaches all distributions to GitHub Releases. Main-branch pushes, pull requests, and manual runs build without publishing.
 
 ## License
 
