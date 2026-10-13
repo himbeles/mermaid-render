@@ -8,8 +8,9 @@
   const diagram = await m.mermaidAPI.getDiagramFromText(source);
   if (diagram.type === 'sequence') return {type:'sequence'};
   const stateDiagram = /^stateDiagram/.test(diagram.type);
-  if (!/^flowchart/.test(diagram.type) && !stateDiagram) {
-    throw new Error(`Connected VSDX export supports Mermaid flowcharts, sequence diagrams, and state diagrams, not ${diagram.type}`);
+  const classDiagram = /^classDiagram/.test(diagram.type);
+  if (!/^flowchart/.test(diagram.type) && !stateDiagram && !classDiagram) {
+    throw new Error(`Connected VSDX export supports Mermaid flowcharts, sequence diagrams, state diagrams, and class diagrams, not ${diagram.type}`);
   }
   const db = diagram.db;
   const data = typeof db.getData === 'function' ? db.getData() : {
@@ -57,7 +58,7 @@
       const localId = svg.id && domId.startsWith(prefix) ? domId.slice(prefix.length) : domId;
       return el.getAttribute('data-id') === resolved || domId === resolved || localId === resolved ||
         stateDiagram && localId === `state-${resolved}` ||
-        localId.match(/^(?:flowchart|state)-(.*)-\d+$/)?.[1] === resolved;
+        localId.match(/^(?:flowchart|state|classId)-(.*)-\d+$/)?.[1] === resolved;
     });
     return matches.find(el => el.classList.contains('node')) ||
       matches.find(el => el.classList.contains('cluster')) || matches[0];
@@ -101,6 +102,14 @@
   }
   const cssColor = (value, fallback) => {
     if (!value || value === 'none' || value === 'transparent') return fallback;
+    // Neo dark-theme borders use paint-server URLs. Preserve a visible
+    // representative stop rather than dropping the entire outline.
+    if (value.startsWith('url(')) {
+      const id = value.match(/#([^)'" ]+)/)?.[1];
+      const stop = id && [...document.getElementById(id)?.querySelectorAll('stop') || []]
+        .find(el => Number.parseFloat(getComputedStyle(el).stopOpacity) > 0);
+      return stop ? cssColor(getComputedStyle(stop).stopColor, fallback) : fallback;
+    }
     if (value.startsWith('#')) return value;
     const parts = value.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
     if (parts) return '#' + parts.slice(1,4).map(n => (+n).toString(16).padStart(2,'0')).join('').toUpperCase();
@@ -191,13 +200,13 @@
       container?.querySelector('path, rect, polygon, ellipse, circle') ||
       el.querySelector('rect, polygon, ellipse, circle, path');
     const cs = getComputedStyle(glyph || el);
-    const strokeGlyph = stateDiagram ? [...el.querySelectorAll('path, rect, polygon, ellipse, circle, line')]
+    const strokeGlyph = stateDiagram || classDiagram ? [...el.querySelectorAll('path, rect, polygon, ellipse, circle, line')]
       .find(part => !part.closest('.label, .cluster-label') && getComputedStyle(part).stroke !== 'none' &&
         Number.parseFloat(getComputedStyle(part).strokeWidth) > 0) : null;
     const strokeCss = strokeGlyph ? getComputedStyle(strokeGlyph) : cs;
     const textEl = el.querySelector('text, foreignObject');
     const fontCss = textEl ? getComputedStyle(textEl) : cs;
-    const labelEl = el.querySelector('.cluster-label, .nodeLabel, .label, text');
+    const labelEl = classDiagram && n.shape === 'classBox' ? el : el.querySelector('.cluster-label, .nodeLabel, .label, text');
     // Some symbols deliberately suppress their label (e.g. hourglass).
     const symbol = stateDiagram && ['stateStart','stateEnd','choice','fork','join','divider'].includes(n.shape);
     const label = symbol ? '' : labelEl ? labelText(labelEl) : formatLabel(n.label, id);
@@ -222,6 +231,17 @@
         connection_points[side] = horizontal ? [value,.5] : [.5,value];
       }
     }
+    const textRows = classDiagram && n.shape === 'classBox' ? [...el.querySelectorAll('tspan.row')].map(row => {
+      const text = row.closest('text'), style = getComputedStyle(text), label = row.closest('.label');
+      const group = row.closest('.label-group, .annotation-group, .members-group, .methods-group');
+      return {...geometry(row), text:row.textContent, align:group?.matches('.label-group, .annotation-group') ? 1 : 0,
+        bold:Number.parseInt(style.fontWeight) >= 600, italic:label?.style.fontStyle === 'italic' || style.fontStyle === 'italic',
+        underline:label?.style.textDecoration.includes('underline'), font_size:Number.parseFloat(style.fontSize),
+        color:cssColor(style.fill, '#172D4A')};
+    }) : null;
+    const textBounds = textRows?.length ? {x:dim.x, y:Math.min(...textRows.map(r=>r.y)),
+      width:dim.width,
+      height:Math.max(...textRows.map(r=>r.y+r.height))-Math.min(...textRows.map(r=>r.y))} : null;
     return {
       id, ...dim, text:label, shape: stateDiagram ? ({stateStart:'state-start',stateEnd:'state-end',
         choice:'diamond',fork:'rect',join:'rect',rect:'roundedrect'}[n.shape] || n.shape) : String(n.shape || n.type || ''),
@@ -234,16 +254,19 @@
       font_size: Number.parseFloat(fontCss.fontSize) || 14,
       is_group: Boolean(n.isGroup),
       parent_id: n.parentId == null ? null : String(n.parentId),
-      label_bounds: labelEl ? geometry(labelEl) : null,
-      text_rows: stateDiagram && labelEl ? [...labelEl.querySelectorAll('tspan.row, tspan.title-row')]
-        .map(row => ({...geometry(row), text:row.textContent})) : null,
+      label_bounds: textBounds || (labelEl ? geometry(labelEl) : null),
+      text_rows: textRows || (stateDiagram && labelEl ? [...labelEl.querySelectorAll('tspan.row, tspan.title-row')]
+        .map(row => ({...geometry(row), text:row.textContent})) : null),
       outlines, connection_points
     };
   });
+  const terminals = [...svg.querySelectorAll('.edgeTerminals')];
+  let terminalIndex = 0;
   const edges = (data.edges || []).map(e => {
     const source = String(e.start ?? e.source ?? ''), target = String(e.end ?? e.target ?? '');
-    const edgePath = [...svg.querySelectorAll('path.flowchart-link, path.transition')].find(path =>
+    const edgePath = [...svg.querySelectorAll('path.flowchart-link, path.transition, path.relation')].find(path =>
       path.id === e.id || path.id === `${svg.id}-${e.id}`);
+    if (classDiagram && !edgePath) throw Error(`Cannot locate class relationship '${e.id}'`);
     const edgeLabel = [...svg.querySelectorAll('.edgeLabel .label')].find(label =>
       label.getAttribute('data-id') === e.id);
     const labelBackground = edgeLabel?.querySelector('rect.background');
@@ -262,15 +285,20 @@
       const marker = getComputedStyle(edgePath).markerEnd;
       const markerId = marker.match(/#([^)'" ]+)/)?.[1];
       const markerEl = markerId ? document.getElementById(markerId) : null;
-      if (stateDiagram && edgePath.dataset.points) {
-        // State barb markers have no viewBox. Mermaid retains their exact
-        // attachment point in data-points, before shortening the centerline.
+      if ((stateDiagram || classDiagram) && edgePath.dataset.points) {
+        // UML markers shorten the centerline. data-points retains the exact
+        // attachment positions before trimming either end for its marker.
         const endpoint = JSON.parse(atob(edgePath.dataset.points)).at(-1);
         route[route.length-1] = {x:t.a*endpoint.x+t.c*endpoint.y+t.e,
                                 y:t.b*endpoint.x+t.d*endpoint.y+t.f};
         if (segments?.length) {
           const last = segments[segments.length-1];
           last.points[last.points.length-1] = route[route.length-1];
+        }
+        if (classDiagram) {
+          const start = JSON.parse(atob(edgePath.dataset.points))[0];
+          route[0] = {x:t.a*start.x+t.c*start.y+t.e,y:t.b*start.x+t.d*start.y+t.f};
+          if (segments?.length) segments[0].points[0] = route[0];
         }
       } else if (markerEl && markerId.includes('pointEnd')) {
         const vb = markerEl.viewBox.baseVal;
@@ -284,6 +312,16 @@
         }
       }
     }
+    const terminal_labels = [];
+    if (classDiagram) {
+      for (const [side, text] of [['source',e.startLabelRight],['target',e.endLabelLeft]]) {
+        if (!text) continue;
+        const terminal = terminals[terminalIndex++];
+        if (!terminal || labelText(terminal) !== text) throw Error(`Cannot map class multiplicity for ${e.id}`);
+        const css = getComputedStyle(terminal.querySelector('text'));
+        terminal_labels.push({...geometry(terminal), text, side, fontPx:Number.parseFloat(css.fontSize),fill:cssColor(css.fill, '#172D4A')});
+      }
+    }
     return {
       source, target, text:labelText(edgeLabel) || formatLabel(e.label, ''), route, segments,
       label_bounds: edgeLabel ? geometry(edgeLabel) : null,
@@ -294,6 +332,9 @@
       arrow: e.arrowTypeEnd !== undefined ? Boolean(e.arrowTypeEnd) && e.arrowTypeEnd !== 'none' : e.type !== 'arrow_open',
       start_arrow: e.arrowTypeStart !== undefined && e.arrowTypeStart !== 'none',
       open_arrow: stateDiagram,
+      ...(classDiagram ? {begin_marker:e.arrowTypeStart, end_marker:e.arrowTypeEnd, terminal_labels,
+        preserve_route:source === target,
+        font_size:labelTextEl ? Number.parseFloat(getComputedStyle(labelTextEl).fontSize) : 14} : {}),
       dash: e.pattern === 'dotted' || e.pattern === 'dashed',
       stroke: edgePath ? cssColor(getComputedStyle(edgePath).stroke, '#4472C4') : '#4472C4',
       stroke_width: edgePath ? Number.parseFloat(getComputedStyle(edgePath).strokeWidth) : 1.152

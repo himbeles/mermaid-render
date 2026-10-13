@@ -197,8 +197,8 @@ def convert(
     The extension selects the format unless explicitly specified. Without an
     output path, SVG is the default. PNG uses ``scale`` as a
     pixel density factor (default 2 = 192 dpi; 1 = 96 dpi). PDF remains vector based.
-    Connected VSDX supports Mermaid flowcharts, sequence diagrams, and state diagrams. Flowchart/state
-    routing is right-angle by default; choose straight or mermaid to override.
+    Connected VSDX supports Mermaid flowcharts, sequence diagrams, state diagrams, and class diagrams.
+    Flowchart/state/class routing is right-angle by default; choose straight or mermaid to override.
     Sequence messages preserve their timeline with direct lines and self-loops.
     """
     if not math.isfinite(scale) or not (0.1 <= scale <= 4):
@@ -222,7 +222,7 @@ def convert(
 
 
 def mermaid_to_vsdx(source: str, output: str | Path | None = None, **kwargs) -> bytes:
-    """Convert a Mermaid flowchart, sequence diagram, or state diagram to connected VSDX."""
+    """Convert a Mermaid flowchart, sequence, state, or class diagram to connected VSDX."""
     return convert(source, output, format="vsdx", **kwargs)
 
 

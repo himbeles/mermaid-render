@@ -1,0 +1,38 @@
+classDiagram
+    direction LR
+
+    namespace Domain {
+        class Order {
+            +String id
+            +Date createdAt
+            +total() Decimal
+            +submit()
+        }
+        class OrderLine {
+            +int quantity
+            +subtotal() Decimal
+        }
+        class Product {
+            +String name
+            +Decimal unitPrice
+        }
+    }
+
+    namespace Persistence {
+        class Repository~T~ {
+            <<interface>>
+            +get(id) T
+            +save(entity)
+        }
+        class SqlRepository {
+            -String connection
+            +get(id) Order
+            +save(order)
+        }
+    }
+
+    Order "1" *-- "1..*" OrderLine : contains
+    OrderLine "0..*" --> "1" Product : references
+    Repository <|.. SqlRepository : implements
+    SqlRepository ..> Order : stores
+    note for Order "An order owns its lines"

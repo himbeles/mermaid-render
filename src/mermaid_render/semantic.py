@@ -13,7 +13,7 @@ from typing import Any, Mapping, Sequence
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from .vsdx import CoordinateSpace, PX_TO_IN, _parts, cell, number, tag, xml_bytes
+from .vsdx import CoordinateSpace, PX_TO_IN, _parts, _shape_text, cell, number, tag, xml_bytes
 
 
 # Sections are enumerated starting at zero; Visio displays them as X1..X4.
@@ -246,7 +246,7 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
         _cell(row, "Size", float(node.get("font_size", 14)) * PX_TO_IN)
         para = ET.SubElement(shape, tag("Section"), {"N": "Paragraph"})
         rows = node.get('text_rows') or []
-        if len(rows) > 1:
+        if len(rows) > 1 or rows and 'align' in rows[0]:
             # Keep title/description compartment spacing while leaving all
             # text editable on the state itself.
             content = ET.SubElement(shape, tag('Text'))
@@ -254,13 +254,21 @@ def _node_shape(parent: ET.Element, index: int, node: Mapping[str, Any], space: 
             _cell(shape, 'RightMargin', .04)
             for ix, line in enumerate(rows):
                 row = ET.SubElement(para, tag('Row'), {'IX': str(ix)})
-                _cell(row, 'HorzAlign', 1 if ix == 0 else 0)
+                _cell(row, 'HorzAlign', line.get('align', 1 if ix == 0 else 0))
+                if 'align' in line and line['align'] == 0:
+                    _cell(row, 'IndLeft', max(0, float(line['x'])-float(bounds['x']))*PX_TO_IN)
                 spacing = float(line['height'])*1.1
                 _cell(row, 'SpLine', spacing*PX_TO_IN)
                 if ix+1 < len(rows):
                     gap = float(rows[ix+1]['y'])-float(line['y'])-spacing
                     _cell(row, 'SpAfter', max(0, gap)*PX_TO_IN)
                 marker = ET.SubElement(content, tag('pp'), {'IX': str(ix)})
+                if 'align' in line:
+                    char_row = ET.SubElement(char, tag('Row'), {'IX': str(ix+1)})
+                    _cell(char_row, 'Color', line['color'])
+                    _cell(char_row, 'Size', line['font_size']*PX_TO_IN)
+                    _cell(char_row, 'Style', int(line['bold']) | int(line['italic']) << 1 | int(line['underline']) << 2)
+                    marker = ET.SubElement(content, tag('cp'), {'IX': str(ix+1)})
                 marker.tail = line['text'] + ('\n' if ix+1 < len(rows) else '')
         else:
             row = ET.SubElement(para, tag("Row"), {"IX": "0"})
@@ -364,7 +372,7 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
     if loop:
         offset = 32 * PX_TO_IN
         route = [(x0, y0), (x0+offset, y0), (x0+offset, y1+offset), (x1, y1+offset), (x1, y1)]
-    elif routing == 'right-angle':
+    elif routing == 'right-angle' or source == target and rendered_route and routing == 'straight':
         route = _right_angle_route(edge, (x0, y0), (x1, y1), space)
     elif routing == 'straight':
         route = [(x0, y0), (x1, y1)]
@@ -404,6 +412,38 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
                        ("BeginArrow", (1 if edge.get('open_arrow') else 13) if edge.get("start_arrow") else 0),
                        ("EndArrow", (1 if edge.get('open_arrow') else 13) if edge.get("arrow", True) else 0)):
         _cell(shape, key, value)
+    # Native UML line ends, per MS-VSDX BeginArrow. Filled composition
+    # diamonds have no built-in index, so keep that artwork on the 1D line.
+    marker_types = {'none': 0, 'extension': 14, 'aggregation': 22,
+                    'composition': 0, 'dependency': 1, 'lollipop': 20}
+    for side, field, endpoint, neighbor in [('begin', 'Begin', route[0], route[1]),
+                                            ('end', 'End', route[-1], route[-2])]:
+        marker = edge.get(side+'_marker')
+        if marker is None:
+            continue
+        if marker not in marker_types:
+            raise ValueError(f'Unsupported UML relationship marker: {marker}')
+        shape.find("./"+tag('Cell')+f"[@N='{field}Arrow']").set('V', str(marker_types[marker]))
+        _cell(shape, field+'ArrowSize', 2)
+        if marker == 'composition':
+            shape.find("./"+tag('Cell')+"[@N='FillPattern']").set('V', '1')
+            _cell(shape, 'FillForegnd', str(edge.get('stroke', '#28253D')))
+            dx, dy = neighbor[0]-endpoint[0], neighbor[1]-endpoint[1]
+            length = max(hypot(dx, dy), .000001)
+            ux, uy = dx/length, dy/length
+            reach, half = 14*PX_TO_IN, 4.5*PX_TO_IN
+            diamond = [(endpoint[0]+ux*d-uy*offset, endpoint[1]+uy*d+ux*offset)
+                       for d, offset in [(0, 0), (reach/2, half), (reach, 0), (reach/2, -half), (0, 0)]]
+            section = ET.SubElement(shape, tag('Section'), {'N':'Geometry', 'IX':str(1 if side == 'begin' else 2)})
+            for ix, (px, py) in enumerate(diamond, 1):
+                row = ET.SubElement(section, tag('Row'), {'IX':str(ix), 'T':'MoveTo' if ix == 1 else 'LineTo'})
+                xx = (px-x0)*cos(angle)+(py-y0)*sin(angle)
+                yy = -(px-x0)*sin(angle)+(py-y0)*cos(angle)
+                if side == 'end':
+                    _cell(row, 'X', xx, f'Width+{number(xx-dist)}')
+                else:
+                    _cell(row, 'X', xx)
+                _cell(row, 'Y', yy)
     if routing != 'mermaid':
         # Native ShapeSheet routing settings, deliberately left unlocked so
         # Visio can reroute the sparse line geometry when shapes are moved.
@@ -442,7 +482,7 @@ def _connector(parent: ET.Element, connects: ET.Element, id: int, edge: Mapping[
             label_x, label_y = dx*cos(angle)+dy*sin(angle), -dx*sin(angle)+dy*cos(angle)
             text_width = (float(bounds['width'])+4)*PX_TO_IN
             text_height = (float(bounds['height'])+2)*PX_TO_IN
-        if routing != 'mermaid' and not loop:
+        if routing != 'mermaid' and source != target:
             # Project the original label onto the new route; straight mode
             # must not leave a label floating on the former curved path.
             lx = x0+label_x*cos(angle)-label_y*sin(angle)
@@ -519,7 +559,7 @@ def build_connected_vsdx(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Map
     indexed = _validate(nodes, edges)
     for edge in edges:
         route = edge.get('route')
-        if route and str(edge['source']) != str(edge['target']):
+        if route and (str(edge['source']) != str(edge['target']) or edge.get('preserve_route')):
             for endpoint, point in (('source', route[0]), ('target', route[-1])):
                 node = indexed[str(edge[endpoint])]
                 ports = node.setdefault('extra_ports', [])
@@ -530,6 +570,10 @@ def build_connected_vsdx(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Map
     points += [(float(n["x"]) + float(n["width"]), float(n["y"]) + float(n["height"])) for n in nodes]
     points += [(float(p['x']), float(p['y'])) for edge in edges for p in edge.get('route') or []]
     for edge in edges:
+        for bounds in [edge.get('label_bounds'), *edge.get('terminal_labels', [])]:
+            if bounds:
+                points.extend([(float(bounds['x']), float(bounds['y'])),
+                               (float(bounds['x'])+float(bounds['width']), float(bounds['y'])+float(bounds['height']))])
         if str(edge["source"]) == str(edge["target"]):
             node = indexed[str(edge["source"])]
             points.append((float(node["x"])+float(node["width"])+32, float(node["y"])-32))
@@ -547,6 +591,22 @@ def build_connected_vsdx(nodes: Sequence[Mapping[str, Any]], edges: Sequence[Map
     for i, edge in enumerate(edges, start=len(nodes) + 1):
         _connector(shapes, connects, i, edge, ids, indexed, space, connectors)
     _container_relationships(shapes, nodes, edges, ids)
+    next_id = len(nodes)+len(edges)+1
+    for index, edge in enumerate(edges, len(nodes)+1):
+        for label in edge.get('terminal_labels', []):
+            shape = ET.SubElement(shapes, tag('Shape'), {'ID':str(next_id), 'NameU':f'Multiplicity{next_id}', 'Type':'Shape'})
+            next_id += 1
+            padding = 4
+            _shape_text(shape, dict(label, x=label['x']-padding, width=label['width']+2*padding, anchor='middle'), space)
+            for key in ['LeftMargin', 'RightMargin', 'TopMargin', 'BottomMargin']:
+                _cell(shape, key, 0)
+            endpoint = edge['route'][0 if label['side'] == 'source' else -1]
+            px, py = space.point(endpoint['x'], endpoint['y'])
+            field = 'Begin' if label['side'] == 'source' else 'End'
+            for key, coordinate, base in [('PinX', field+'X', px), ('PinY', field+'Y', py)]:
+                pin = shape.find("./"+tag('Cell')+f"[@N='{key}']")
+                offset = float(pin.get('V'))-base
+                pin.set('F', f'Sheet.{index}!{coordinate}+{number(offset)}')
     if len(connects):
         contents.append(connects)
     output = BytesIO()
