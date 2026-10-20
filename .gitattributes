@@ -1,0 +1,2 @@
+# Preserve the exact bytes verified against the vendored bundle's checksum.
+src/mermaid_render/pele/pele.global.js -text
