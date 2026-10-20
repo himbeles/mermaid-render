@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Mermaid Visio Python port contributors
+Copyright (c) 2026 Luis Riegger
 
 Originally adapted from Freddy Beltran's mermaid-to-visio project
 (https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX
