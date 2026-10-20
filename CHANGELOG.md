@@ -2,6 +2,8 @@
 
 ## 0.14.0
 
+- Build the universal wheel with the native uv build backend.
+
 - Replace Mermaid.js, Playwright and headless Chromium with pinned Pele 1.6.0 in embedded QuickJS-NG 0.17.0.1. Render PNG with native resvg-py 0.5.0. Rendering requires no Node installation, browser, subprocess or network access.
 - Bundle licensed Pele and Noto Sans assets in a universal Python wheel. Native dependencies install as Python wheels. GitHub Releases and PyPI receive the same single universal wheel. Remove browser installers, asset downloads, platform-browser packaging and the `mermaid-render setup` command.
 - Remove PDF output and the `mermaid_to_pdf` API. Unsupported formats use the standard format validation error.

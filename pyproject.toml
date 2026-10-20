@@ -29,14 +29,11 @@ mermaid-render-mcp = "mermaid_render.server:main"
 dev = ["pytest>=8,<10", "mcp>=2.1,<3", "pillow>=11,<14"]
 
 [build-system]
-requires = ["hatchling>=1.27,<2"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.11.29,<0.12"]
+build-backend = "uv_build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/mermaid_render"]
-
-[tool.hatch.build.targets.sdist]
-include = ["/CHANGELOG.md", "/src", "/tests", "/examples", "/scripts", "/.python-version", "/.gitignore"]
+[tool.uv.build-backend]
+source-include = ["CHANGELOG.md", "tests/**", "examples/**", "scripts/**", ".python-version", ".gitignore", ".gitattributes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
