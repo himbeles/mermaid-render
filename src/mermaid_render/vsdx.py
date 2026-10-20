@@ -1,8 +1,7 @@
-"""Pure-Python equivalent of FBklyra/mermaid-to-visio's VSDX writer.
+"""Write editable VSDX shapes and text from a display list.
 
 A display list is a mapping with ``width``, ``height`` and ``items`` keys.
-The items are ``kind: poly`` or ``kind: text`` dictionaries. This preserves
-an exchange format independent of the browser capture implementation.
+The items are ``kind: poly`` or ``kind: text`` dictionaries.
 """
 
 from __future__ import annotations

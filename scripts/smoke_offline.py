@@ -1,58 +1,50 @@
-"""Run in a clean environment after installing the built wheel.
+"""Verify an installed wheel offline, without browsers, Node, or executable lookup."""
 
-Only local files are allowed: any external HTTP request is rejected by the
-converter's browser request routing when the bundled Mermaid runtime is present.
-"""
-import importlib.metadata
-import tempfile
+import os
 from io import BytesIO
-from pathlib import Path
+import socket
+import subprocess
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
-from mermaid_render import convert
-import sys
-import mermaid_render.assets as assets
+from mermaid_render import convert, svg_to_vsdx
 
-root = Path(importlib.metadata.distribution('mermaid-render').locate_file('mermaid_render'))
-lightweight = '--lightweight' in sys.argv
-support = tempfile.TemporaryDirectory()
-assets.data_root = lambda: Path(support.name) / "support"
-if lightweight:
-    assert not (root / 'browsers' / 'BROWSER_INFO.json').exists()
-    assert not (root / 'runtime' / 'mermaid.esm.min.mjs').exists()
+os.environ["PATH"] = ""
+
+
+def forbidden(*args, **kwargs):
+    raise AssertionError(
+        "Rendering attempted network access or started an external executable"
+    )
+
+
+socket.socket.connect = forbidden
+socket.create_connection = forbidden
+subprocess.Popen = forbidden
+SOURCES = {
+    "flowchart": "flowchart LR; A[Input] -->|Process| B{Valid?}; B --> C(Done)",
+    "state": "stateDiagram-v2\n[*] --> Idle\nIdle --> Running : start\nRunning --> [*]",
+    "class": 'classDiagram\nclass A {\n+String name\n}\nA "1" --> "*" B : uses',
+    "sequence": "sequenceDiagram\nparticipant A as Alice\nparticipant B as Bob\nA->>+B: Request\nB-->>-A: Reply",
+}
+NS = {"v": "http://schemas.microsoft.com/office/visio/2012/main"}
+for kind, source in SOURCES.items():
+    svg = convert(source)
+    assert ET.fromstring(svg).tag.endswith("svg")
+    assert convert(source, format="png").startswith(b"\x89PNG\r\n\x1a\n")
+    with ZipFile(BytesIO(convert(source, format="vsdx"))) as archive:
+        assert archive.testzip() is None
+        page = ET.fromstring(archive.read("visio/pages/page1.xml"))
+        assert len(page.findall("v:Connects/v:Connect", NS)) >= 2
+assert svg_to_vsdx(
+    '<svg xmlns="http://www.w3.org/2000/svg"><rect width="50" height="30"/></svg>'
+).startswith(b"PK")
+try:
+    convert(SOURCES["flowchart"], format="gif")
+except ValueError as exc:
+    assert "format must" in str(exc)
 else:
-    assert assets.bundled_browser() is not None
-    assert (root / 'runtime' / 'mermaid.esm.min.mjs').is_file()
-
-
-def no_download(*args, **kwargs):
-    raise AssertionError('Rendering tried to download already available runtime assets')
-
-
-if not lightweight:
-    assets.download_mermaid = assets.install_browser = no_download
-
-src = 'flowchart LR\n A[Alpha] --> B[Beta]\n B --> C[Gamma]'
-svg = convert(src, format='svg')
-assert b'<svg' in svg
-# The first lightweight render installs missing assets. All later renders must
-# work without any setup downloads, just like a bundled installation.
-assets.download_mermaid = assets.install_browser = no_download
-png = convert(src, format='png', scale=2)
-assert png.startswith(b'\x89PNG\r\n\x1a\n')
-pdf = convert(src, format='pdf')
-assert pdf.startswith(b'%PDF-')
-vsdx = convert(src, format='vsdx')
-with ZipFile(BytesIO(vsdx)) as z:
-    assert z.testzip() is None
-    page = z.read('visio/pages/page1.xml')
-    assert b'<Connects>' in page and b'<Connect ' in page
-sequence = convert('sequenceDiagram\n participant A as Alice\n participant B as Bob\n A->>+B: Request\n B-->>-A: Reply', format='vsdx')
-with ZipFile(BytesIO(sequence)) as z:
-    assert z.testzip() is None
-    page = z.read('visio/pages/page1.xml')
-    assert b'Participant.A' in page and b'Type="Group"' in page
-    assert page.count(b'<Connect ') == 4
-print('Offline wheel smoke test passed: SVG, PNG, PDF, flowchart and sequence VSDX.')
-
-support.cleanup()
+    raise AssertionError("Unsupported format was accepted")
+print(
+    "Offline wheel smoke test passed: SVG/PNG and all four connected VSDX types; no network, Node, browser, or subprocess."
+)

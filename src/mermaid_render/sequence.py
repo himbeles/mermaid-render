@@ -89,7 +89,7 @@ def build_sequence_vsdx(graph, *, title='Sequence Diagram'):
             if item['kind']=='poly':
                 _shape_geometry(child,item,local)
             else:
-                # A tight browser glyph box can wrap in another viewer's
+                # A tight glyph box can wrap in another viewer's
                 # substitute font. Keep its center but allow extra width.
                 padding=max(4,item['width']*.12)
                 text=dict(item,x=item['x']-padding,width=item['width']+2*padding,anchor='middle')

@@ -1,153 +1,93 @@
-"""The same Mermaid source can be rendered as SVG or a connected VSDX."""
+"""Real embedded rendering, native PNG, and public format behavior."""
+
 from io import BytesIO
-from zipfile import ZipFile
+import struct
 from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 
 import pytest
-
 from mermaid_render import convert
-from mermaid_render.vsdx import NS_MAIN
+
+SOURCE = "flowchart LR; A[Input] -->|Process| B{Valid?}; B -->|Yes| C(Done)"
+NS = {"v": "http://schemas.microsoft.com/office/visio/2012/main"}
 
 
-@pytest.fixture
-def stub_dist(tmp_path, monkeypatch):
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "mermaid.esm.min.mjs").write_text(r'''
-        const model = {
-          nodes: [
-            {id:'A',label:'Input',shape:'rect'},
-            {id:'B',label:'Output',shape:'decision'},
-            {id:'C',label:'Done',shape:'roundedRect'},
-          ],
-          edges: [
-            {start:'A',end:'B',label:'process',arrowTypeEnd:'point'},
-            {start:'B',end:'C',label:'yes',arrowTypeEnd:'point'}
-          ]
-        };
-        const mermaid = {
-          initialize() {},
-          async render(id, source) {
-            return {svg: `<svg id="${id}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 130">
-              <g class="node" id="flowchart-A-0" transform="translate(55,60)">
-                <rect x="-45" y="-20" width="90" height="40" fill="#F0F4FF" stroke="#445577"/>
-                <text x="0" y="5" text-anchor="middle">Input</text>
-              </g>
-              <g class="node" data-id="B" transform="translate(200,60)">
-                <polygon points="0,-30 55,0 0,30 -55,0" fill="#FFEECC" stroke="#445577"/>
-                <text x="0" y="5" text-anchor="middle">Output</text>
-              </g>
-              <g class="node" id="flowchart-C-2" transform="translate(345,60)">
-                <rect rx="5" ry="5" x="-45" y="-20" width="90" height="40" fill="#F0F4FF" stroke="#445577"/>
-                <text x="0" y="5" text-anchor="middle">Done</text>
-              </g>
-            </svg>`};
-          },
-          mermaidAPI: {
-            async getDiagramFromText(source) {return {type:'flowchart-v2',db:{getData(){return model;}}};}
-          }
-        };
-        export default mermaid;
-    ''', encoding="utf-8")
-    monkeypatch.setattr("mermaid_render.api.ensure_mermaid", lambda: dist)
-    return dist
-
-
-def test_svg_output(stub_dist, tmp_path):
+def test_svg_output(tmp_path):
     out = tmp_path / "diagram.svg"
-    data = convert("flowchart LR; A-->B", out)
+    data = convert(SOURCE, out)
     assert out.read_bytes() == data
-    assert b'<svg' in data
-    assert b'class="node"' in data
+    root = ET.fromstring(data)
+    assert root.tag.endswith("svg") and "pele-flowchart" in root.get("class")
+    assert "var(" not in data.decode()
 
 
-@pytest.mark.parametrize("prefix", ["", "mermaid_render_graph-"])
-@pytest.mark.parametrize("node_id", ["A", "A-with-dashes"])
-def test_connected_vsdx_output(stub_dist, tmp_path, prefix, node_id):
-    module = stub_dist / "mermaid.esm.min.mjs"
-    module.write_text(module.read_text().replace("'A'", repr(node_id))
-                      .replace("flowchart-A-0", f"{prefix}flowchart-{node_id}-0")
-                      .replace("flowchart-C-2", f"{prefix}flowchart-C-2"))
+@pytest.mark.parametrize("id_", ["A", "A-with-dashes"])
+def test_connected_vsdx_output(id_, tmp_path):
+    source = SOURCE.replace("A[", id_ + "[")
     out = tmp_path / "diagram.vsdx"
-    data = convert("flowchart LR; A-->B", out)
-    with ZipFile(BytesIO(data)) as z:
-        assert z.testzip() is None
-        root = ET.fromstring(z.read("visio/pages/page1.xml"))
-        shapes = root.findall(f".//{{{NS_MAIN}}}Shape")
-        links = root.findall(f".//{{{NS_MAIN}}}Connect")
-        assert len(shapes) == 5  # 3 grouped node shapes + 2 glued connectors
-        assert len(links) == 4  # BeginX and EndX for each edge
-        assert [x.text for x in root.findall(f".//{{{NS_MAIN}}}Text")] == [
-            "Input", "Output", "Done", "process", "yes"
-        ]
-        # Mermaid's roundedRect shape and SVG radius must reach the writer.
-        rounding = shapes[2].find(f"{{{NS_MAIN}}}Cell[@N='Rounding']")
-        assert float(rounding.get("V")) == pytest.approx(5 / 96, abs=1e-6)
-        assert shapes[0].find(f"{{{NS_MAIN}}}Cell[@N='Rounding']") is None
-        ids = {shape.get("ID") for shape in shapes}
-        assert all(link.get("ToSheet") in ids for link in links)
-        connectors = shapes[3:]
-        assert all(any(x.get('N') == 'BeginX' and 'Connections.X' in x.get('F', '')
-                       for x in shape.findall(f'{{{NS_MAIN}}}Cell')) for shape in connectors)
+    data = convert(source, out)
+    with ZipFile(BytesIO(data)) as archive:
+        assert archive.testzip() is None
+        page = ET.fromstring(archive.read("visio/pages/page1.xml"))
+    assert len(page.findall("v:Shapes/v:Shape", NS)) == 5
+    assert len(page.findall("v:Connects/v:Connect", NS)) == 4
+    assert {"Input", "Valid?", "Done", "Process", "Yes"} == {
+        t.text for t in page.findall(".//v:Text", NS)
+    }
     assert out.read_bytes() == data
 
 
-def test_format_validation(stub_dist, tmp_path):
-    with pytest.raises(ValueError, match="format must"):
-        convert("graph LR", format="gif")
-    assert convert("flowchart LR; A-->B", format="visio",
-                   ).startswith(b"PK")
-    with pytest.raises(ValueError, match="Output filename"):
-        convert("graph LR", tmp_path / "a.svg", format="vsdx")
-
-
-def test_unsupported_diagram_fails_for_connected_visio(stub_dist, tmp_path):
-    f = stub_dist / 'mermaid.esm.min.mjs'
-    f.write_text(f.read_text().replace("type:'flowchart-v2'", "type:'pie'"))
-    with pytest.raises(Exception, match="Connected VSDX export supports Mermaid flowcharts"):
-        convert('classDiagram', format='vsdx')
-    assert b'<svg' in convert('classDiagram', format='svg')
-
-
-@pytest.mark.parametrize('scale,dimensions', [(None, (800, 260)), (1, (400, 130)), (2, (800, 260))])
-def test_png_output_and_scale(stub_dist, tmp_path, scale, dimensions):
-    import struct
+@pytest.mark.parametrize("scale", [1, 2, 3])
+def test_png_output_and_scale(scale, tmp_path):
+    svg = ET.fromstring(convert(SOURCE))
     out = tmp_path / "diagram.png"
-    kwargs = {} if scale is None else {'scale': scale}
-    data = convert("flowchart LR; A-->B", out, **kwargs)
-    assert out.read_bytes() == data
-    assert data[:8] == b"\x89PNG\r\n\x1a\n"
-    width, height = struct.unpack(">II", data[16:24])
-    assert (width, height) == dimensions
+    data = convert(SOURCE, out, scale=scale)
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and out.read_bytes() == data
+    assert struct.unpack(">II", data[16:24]) == (
+        round(float(svg.get("width")) * scale),
+        round(float(svg.get("height")) * scale),
+    )
 
 
-def test_png_transparent_background(stub_dist):
-    data = convert("flowchart LR; A-->B", format="png", background="transparent")
-    assert data.startswith(b"\x89PNG\r\n\x1a\n")
+def test_png_backgrounds():
+    from PIL import Image
+
+    transparent = Image.open(
+        BytesIO(convert(SOURCE, format="png", background="transparent"))
+    ).convert("RGBA")
+    white = Image.open(BytesIO(convert(SOURCE, format="png"))).convert("RGBA")
+    assert transparent.getpixel((0, 0))[3] == 0
+    assert white.getpixel((0, 0)) == (255, 255, 255, 255)
 
 
-def test_pdf_output(stub_dist, tmp_path):
-    out = tmp_path / "diagram.pdf"
-    data = convert("flowchart LR; A-->B", out,
-                   )
-    assert out.read_bytes() == data
-    assert data.startswith(b"%PDF-")
-    assert len(data) > 1000
-
-
-def test_image_validation(stub_dist, tmp_path):
-    with pytest.raises(ValueError, match="scale must"):
-        convert("flowchart LR; A-->B", format="png", scale=-1)
-    with pytest.raises(ValueError, match="scale must"):
-        convert("flowchart LR; A-->B", format="png", scale=float("nan"))
+def test_format_validation(tmp_path):
+    with pytest.raises(ValueError, match="format must"):
+        convert(SOURCE, format="gif")
+    with pytest.raises(ValueError, match="format must"):
+        convert(SOURCE, tmp_path / "out.gif")
     with pytest.raises(ValueError, match="Output filename"):
-        convert("flowchart LR; A-->B", tmp_path / "test.pdf", format="png")
+        convert(SOURCE, tmp_path / "out.svg", format="png")
+    assert convert(SOURCE, format="visio").startswith(b"PK")
+    for scale in [-1, 0, 5, float("nan")]:
+        with pytest.raises(ValueError, match="scale must"):
+            convert(SOURCE, scale=scale)
+    with pytest.raises(ValueError, match="background"):
+        convert(SOURCE, format="png", background="")
+    with pytest.raises(ValueError, match="visio_connectors"):
+        convert(SOURCE, visio_connectors="curvy")
 
 
-def test_default_format_is_svg(stub_dist):
-    assert b'<svg' in convert('flowchart LR; A-->B')
+def test_other_diagram_formats():
+    source = 'pie title Pets\n"Cats": 40\n"Dogs": 60'
+    assert b"<svg" in convert(source)
+    assert convert(source, format="png").startswith(b"\x89PNG")
+    with pytest.raises(ValueError, match="Connected VSDX supports"):
+        convert(source, format="vsdx")
 
 
-def test_invalid_visio_connector_routing():
-    with pytest.raises(ValueError, match='visio_connectors must'):
-        convert('flowchart LR; A-->B', format='vsdx', visio_connectors='curvy')
+def test_failed_conversion_does_not_replace_file(tmp_path):
+    out = tmp_path / "existing.svg"
+    out.write_bytes(b"original")
+    with pytest.raises(ValueError):
+        convert("flowchart LR; A[", out)
+    assert out.read_bytes() == b"original"

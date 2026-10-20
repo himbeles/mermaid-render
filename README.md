@@ -1,194 +1,111 @@
 # mermaid-render
 
-Render Mermaid diagrams to **SVG, PNG, PDF**, or **editable, connected Visio VSDX** on Linux, Windows, and macOS. Uses the official Mermaid.js renderer; no Node.js or Microsoft Visio installation is required. Python 3.10+ is supported.
+Render Mermaid diagrams to **SVG, PNG, or editable, connected Visio VSDX** on Linux, Windows, and macOS. Uses Pele in embedded QuickJS and native resvg for PNG. Supports Python 3.10+.
 
-## Install from PyPI
+## Install
 
-Install the command-line tool with [uv](https://docs.astral.sh/uv/):
-
-```bash
+Install as globally available tool on your path
+```sh
 uv tool install mermaid-render
 ```
 
-Mermaid.js and Chromium support files install automatically on the first render. To prepare them in advance, run `mermaid-render setup`.
+Optionally, install with integrated MCP server:
 
-### Command-line usage
+```sh
+uv tool install 'mermaid-render[mcp]'
+``` 
 
-```bash
-mermaid-render diagram.mmd                  # Creates diagram.svg
-mermaid-render diagram.mmd -o diagram.png   # PNG at scale 2 (192 dpi)
-mermaid-render diagram.mmd -o diagram.pdf
+## Command line
+
+Some example usage:
+
+```sh
+mermaid-render diagram.mmd    # --> diagram.svg
+mermaid-render diagram.mmd -o diagram.png
+mermaid-render diagram.mmd --format png
 mermaid-render diagram.mmd -o diagram.vsdx
+mermaid-render examples/sequence.mmd --format visio
 ```
 
-The output extension selects the format; use `--format` to select it explicitly. SVG is the default. The default theme is `redux-color`; use `--theme` to change it.
+The extension chooses the format; `--format svg|png|vsdx|visio` selects it explicitly. PNG defaults to scale 2 (192 dpi); use `--scale 1` for 96 dpi or `--background transparent` for transparency. SVG keeps fixed natural dimensions and the source direction. PNG output is limited to 100 megapixels; use SVG for larger drawings.
 
-- **PNG:** Defaults to twice the SVG's pixel dimensions. Use `--scale 1` for 96 dpi, or `--background transparent` for a transparent background.
-- **PDF:** A single diagram-sized vector page. Scale applies only to PNG.
-- **VSDX:** Flowcharts, sequence diagrams, state diagrams, and class diagrams, with editable shapes and glued connectors. Flowchart subgraphs become native Visio containers with member relationships, including nested subgraphs and internal connectors. Flowcharts, state diagrams, and class diagrams default to right-angle connectors; choose `--visio-connectors straight` or `--visio-connectors mermaid` for direct lines or detailed Mermaid curves. Mermaid attachment positions, standard shape connection points, and rendered border widths are retained.
+`--theme` selects a fixed color palette: `redux-color` (default), `default`, `dark`, `neutral`, or `forest`. Text layout uses bundled Noto Sans metrics, and PNG rendering loads the same fonts. Glyphs outside the bundled font may use installed system fallback fonts; install appropriate fonts when exporting CJK or other scripts outside Noto Sans's coverage. 
 
-Sequence diagrams preserve participants and actors, lifelines, nested activations, message labels and numbering, notes, interaction frames, and participant creation/destruction. Each participant's artwork forms one movable group, with messages attached at their chronological positions. Messages use straight lines and simple rectangular self-loops; `--visio-connectors` applies to flowcharts, state diagrams, and class diagrams. Try `examples/sequence.mmd`:
-
-```bash
-mermaid-render examples/sequence.mmd -o sequence.vsdx
-```
-
-State diagrams preserve initial/final symbols, choices, fork/join bars, labeled transitions and self-loops, multiline descriptions, notes, and nested or concurrent states. Composite states become native Visio containers, and transitions remain glued to editable shapes. Try `examples/state.mmd`:
-
-```bash
-mermaid-render examples/state.mmd -o state.vsdx
-```
-
-Class diagrams preserve class names, stereotypes, attribute/method compartments, visibility, generics, static and abstract members, notes, and nested namespaces. UML relationship ends distinguish inheritance, realization, composition, aggregation, association, dependency, and lollipop interfaces. Relationship labels and multiplicities stay editable; endpoint labels follow their glued connectors. Try `examples/class.mmd`:
-
-```bash
-mermaid-render examples/class.mmd -o class.vsdx
-```
-
-Other Mermaid diagram types currently support SVG, PNG, and PDF output.
-
-### Python usage
-
-Install into your project with `uv add mermaid-render`, or into an existing environment with `uv pip install mermaid-render`.
+## Python
 
 ```python
 from mermaid_render import convert
 
 source = """flowchart LR
-    A[Input] --> B{Valid?}
-    B -->|Yes| C[Process]
-    B -->|No| D[Reject]
+  A[Input] --> B{Valid?}
+  B -->|Yes| C(Process)
+  B -->|No| D[Reject]
 """
 
 convert(source, "diagram.svg")
-convert(source, "diagram.png", background="transparent")  # scale=2 by default
-convert(source, "diagram.pdf")
+convert(source, "diagram.png", background="transparent", scale=2)
 convert(source, "diagram.vsdx", visio_connectors="right-angle")
-svg_bytes = convert(source)  # Without an output path, returns SVG bytes
+svg_bytes = convert(source)
 ```
 
-`convert` returns bytes for every format and writes them when an output path is supplied. Use `theme=`, `scale=`, and `background=` to customize rendering.
+`convert()` always returns bytes and optionally writes them to the output path. Output is written only after rendering succeeds. Convenience functions are `mermaid_to_svg`, `mermaid_to_png`, and `mermaid_to_vsdx`. Supported keywords are `format`, `title`, `theme`, `background`, `scale`, and `visio_connectors`. Background and scale control PNG output.
 
-### MCP server
+## Editable Visio
 
-Install optional MCP support:
+Connected VSDX export supports **flowcharts, sequence diagrams, state diagrams, and class diagrams**. Shapes and text remain editable; connectors retain native glue records.
 
-```bash
-uv tool install --upgrade 'mermaid-render[mcp]'
+- **Flowcharts:** standard and expanded shapes, multiline labels, styles, nested native containers, and directed/labeled connectors. Complex glyphs are captured as geometry sections of one editable node.
+- **State diagrams:** initial/final states, choices, fork/join bars, descriptions, notes, transitions, nested composites, and concurrent regions. Concurrent region containers are derived from their positioned members because Pele renders region separators without wrapper IDs.
+- **Class diagrams:** compartments, stereotypes, attributes, methods, static/abstract rows, namespaces, notes, UML relationship ends, and editable multiplicities.
+- **Sequence diagrams:** grouped participant artwork, actors, lifelines, activations, create/destroy artwork, notes, interaction frames, message numbering, and chronology-preserving glued messages.
+
+Flowchart/state/class connectors default to orthogonal routing. Choose `--visio-connectors straight` or `--visio-connectors mermaid` to use direct lines or the Mermaid curves. Sequence messages use straight lines and rectangular self-loops at their timeline positions. Moving or editing a diagram in Microsoft Visio should still be checked for your workflow; validation covers XML/glue records and visual checks in an independent viewer. Automated Microsoft Visio editing is not covered.
+
+Fill transparency is flattened for native connected Visio nodes over their container or page background. Rich Visio text retains row styles; mixed styles within one row are combined at row granularity.
+
+Other Mermaid diagram types support SVG and PNG. Images, external icon artwork and interactive links are disabled. Unsupported semantic mappings fail explicitly rather than returning disconnected Visio artwork. The adapter is tied to the vendored Pele version; changing that version requires checking its SVG and model identities.
+
+`svg_to_vsdx(svg)` is available for geometry-only SVG import. It captures paths (including curves and arcs), basic shapes, affine transforms, local CSS, and positioned SVG text/tspans without a browser. It does not infer graph connections. External resources, scripts, `foreignObject`, filters, and `<use>` references are rejected. This is a static SVG subset, not a full web layout engine.
+
+## MCP server
+
+```sh
+uv tool install 'mermaid-render[mcp]'
 ```
 
-Add the stdio server to your MCP client's configuration:
+Configure a stdio MCP server:
 
 ```json
 {
   "mcpServers": {
-    "mermaid-render": {
-      "command": "mermaid-render-mcp"
-    }
+    "mermaid-render": {"command": "mermaid-render-mcp"}
   }
 }
 ```
 
-The server provides one tool, `render_mermaid`. Supply either Mermaid `source`
-or an `input_path` ending in `.mmd`/`.mermaid`, plus an `output_path`:
+The `render_mermaid` tool accepts either `source` or `input_path` (`.mmd`/`.mermaid`), plus `output_path`. SVG, PNG, VSDX, and the `visio` alias use the same options as the Python API. Prefer absolute paths. Missing output directories are created and existing files are replaced only after successful rendering.
 
 ```json
-{
-  "source": "flowchart LR; A[Input] -->|Process| B[Output]",
-  "output_path": "/absolute/path/diagram.svg"
-}
+{"source":"flowchart LR; A-->B","output_path":"/absolute/path/diagram.png"}
 ```
 
-The output extension selects SVG, PNG, PDF, or VSDX. Without an extension,
-the server appends `.svg`; an explicit `format` overrides the default and must
-match any supplied extension. The result contains the absolute `output_path`,
-`format`, and `mime_type`. Existing output is replaced only after rendering succeeds.
-Use absolute paths: relative paths resolve from the server's working directory.
+## Development and release
 
-Optional arguments are `theme`, `title`, `background`, `scale`, and
-`visio_connectors`, with the same defaults as the Python API. Runtime setup is
-automatic. For offline use, install a bundled wheel with its `mcp` extra and
-the MCP dependencies available in your environment.
-
-### Runtime support files
-
-Support files persist in user application data, rather than a temporary cache:
-
-| OS | Location |
-|---|---|
-| macOS | `~/Library/Application Support/mermaid-render` |
-| Linux | `$XDG_DATA_HOME/mermaid-render`, or `~/.local/share/mermaid-render` |
-| Windows | `%LOCALAPPDATA%\mermaid-render` |
-
-The package checks version-matched user support files first, then bundled files. Setup copies bundled files into the support directory when needed, or downloads missing files. Existing valid files are reused. Paths are managed automatically.
-
-On Linux, Chromium also needs system libraries. On a connected machine, install them with:
-
-```bash
-uvx --from playwright==1.63.0 playwright install-deps chromium
-```
-
-## Install in an offline environment
-
-Download a **bundled wheel** from [GitHub Releases](https://github.com/himbeles/mermaid-render/releases), matching the target operating system and architecture:
-
-| Platform | Wheel filename suffix |
-|---|---|
-| Linux x86-64 | `linux_x86_64.whl` |
-| Windows x86-64 | `win_amd64.whl` |
-| macOS Apple Silicon | `macosx_*_arm64.whl` |
-
-Transfer the wheel to the target machine and install it using its full filename, for example:
-
-```bash
-uv tool install ./mermaid_render-0.11.0-py3-none-macosx_13_0_arm64.whl
-mermaid-render diagram.mmd -o diagram.vsdx
-```
-
-Bundled wheels include Mermaid.js and Chromium, so rendering requires no runtime downloads. Optional `mermaid-render setup` copies these assets into the user support directory.
-
-Linux wheels are tested on Ubuntu 24.04 and require compatible system browser libraries to be present on the offline machine. They are not manylinux wheels. macOS wheels encode the minimum OS version required by their binaries; CI tests on macOS 15.
-
-GitHub Releases also contain the lightweight PyPI wheel and source archive. Choose a platform-specific wheel for the bundled runtime.
-
-## Contribute
-
-Clone the repository and use uv to install dependencies and run tests:
-
-```bash
-git clone https://github.com/himbeles/mermaid-render.git
-cd mermaid-render
+```sh
 uv sync --locked
 uv run pytest -q
-uv run mermaid-render examples/example.mmd -o diagram.vsdx
-```
-
-Rendering and browser tests automatically prepare missing support files. On Linux, install browser system libraries first with `uv run python -m playwright install-deps chromium`.
-
-The rendering API lives in `src/mermaid_render/api.py`; connected VSDX generation in `semantic.py` (flowcharts, state diagrams, and class diagrams) and `sequence.py`; Mermaid semantics and artwork capture in the `*_capture.js` files and `capture.js`; runtime installation in `assets.py`. Add regression tests for rendering or connector changes. Visual checks in an independent VSDX viewer are useful alongside automated tests.
-
-### Build and release
-
-Build lightweight PyPI distributions:
-
-```bash
+uv run mermaid-render examples/class.mmd -o /tmp/class.vsdx
 uv build --out-dir dist/pypi
-uv run python scripts/check_lightweight_dist.py dist/pypi
+uv run python scripts/check_distributions.py dist/pypi
+uv run python scripts/test_wheel_install.py dist/pypi/*.whl
 ```
 
-Build and test a bundled wheel on its target OS/architecture:
+`test_wheel_install.py --wheelhouse PATH WHEEL` installs entirely from local wheels. Its smoke test renders SVG/PNG and all four connected VSDX types with network/subprocess calls blocked and an empty `PATH`. CI runs the suite and installed-wheel smoke test on Linux, Windows, and macOS with Python 3.10 and 3.13.
 
-```bash
-uv run python scripts/build_platform_wheel.py --outdir dist/bundled
-uv run python scripts/test_wheel_install.py dist/bundled/*.whl
-```
+Implementation: `renderer.py`/`renderer.js` run pinned Pele; `svg.py` reads static SVG geometry and text; `capture.py` maps semantic graphs; `semantic.py`, `sequence.py`, and `vsdx.py` write Visio.
 
-[GitHub Actions](.github/workflows/bundled-wheels.yml) builds and tests lightweight distributions plus three platform-specific wheels: Linux x86-64, Windows x86-64, and macOS Apple Silicon. To release, update `project.version` in `pyproject.toml`, run `uv lock`, commit, and push a matching `v<version>` tag. The workflow publishes lightweight distributions to PyPI through Trusted Publishing and attaches all distributions to GitHub Releases. Main-branch pushes, pull requests, and manual runs build without publishing.
+To release, update the project version, run `uv lock`, commit, and push the matching `v<version>` tag. The workflow validates the tag, tests native dependencies and offline installs, publishes the wrapper to PyPI through Trusted Publishing, and attaches distributions/offline wheelhouses to GitHub Releases. No release is published by a branch push.
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
-
-Originally adapted from [Freddy Beltran's mermaid-to-visio project](https://github.com/FBklyra/mermaid-to-visio). SVG capture and low-level VSDX generation retain that heritage; connected flowchart, sequence-diagram, state-diagram, and class-diagram export were developed further in mermaid-render.
-
-Bundled Mermaid, Chromium, and Playwright retain their upstream licenses and notices.
+MIT; see [LICENSE](LICENSE). Adapted originally from [Freddy Beltran's mermaid-to-visio](https://github.com/FBklyra/mermaid-to-visio). Pele retains its bundled MIT/ISC notices in `src/mermaid_render/pele/LICENSE`; Noto Sans uses the SIL Open Font License in `src/mermaid_render/fonts/LICENSE`. QuickJS-NG, resvg, svgelements, and the other Python dependencies retain their upstream licenses.

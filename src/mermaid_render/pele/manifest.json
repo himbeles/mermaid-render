@@ -1,0 +1,8 @@
+{
+  "name": "pele",
+  "version": "1.6.0",
+  "source": "https://registry.npmjs.org/pele/-/pele-1.6.0.tgz",
+  "sha256": "b82d1bcd435302779a945e1e0f4a54ea56fb26e010ce3f2122f4216fcfc095d7",
+  "license": "MIT",
+  "upstream": "https://github.com/obsidianmd/pele"
+}
