@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the built wheel to PyPI
+        description: Publish the wheel and source archive to PyPI
         type: boolean
         default: false
       skip_macos:
@@ -41,13 +41,13 @@ jobs:
           assert os.environ['GITHUB_REF_NAME'] == f'v{version}'
           PY
       - run: uv sync --locked
-      - run: uv build --wheel --out-dir dist/pypi
+      - run: uv build --out-dir dist/pypi
       - run: uv run python scripts/check_distributions.py dist/pypi
-      - run: uvx --from twine==7.0.0 twine check --strict dist/pypi/*.whl
+      - run: uvx --from twine==7.0.0 twine check --strict dist/pypi/*
       - uses: actions/upload-artifact@v4
         with:
           name: pypi-dist
-          path: dist/pypi/*.whl
+          path: dist/pypi/*
           if-no-files-found: error
 
   test:
@@ -90,7 +90,7 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.whl
+          files: dist/*
           fail_on_unmatched_files: true
 
   pypi:
@@ -114,4 +114,4 @@ jobs:
         with:
           name: pypi-dist
           path: dist
-      - run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*.whl
+      - run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*

@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.14.0
+## 0.14.1
 
-- Build the universal wheel with the native uv build backend.
+- Build distributions with the native uv build backend, with matching uv versions in CI.
+- Publish one universal wheel and one source archive to both PyPI and GitHub Releases.
+- Allow manual PyPI publishing with macOS tests omitted while retaining Linux and Windows checks on Python 3.10 and 3.14.
+
+## 0.14.0
 
 - Replace Mermaid.js, Playwright and headless Chromium with pinned Pele 1.6.0 in embedded QuickJS-NG 0.17.0.1. Render PNG with native resvg-py 0.5.0. Rendering requires no Node installation, browser, subprocess or network access.
 - Bundle licensed Pele and Noto Sans assets in a universal Python wheel. Native dependencies install as Python wheels. GitHub Releases and PyPI receive the same single universal wheel. Remove browser installers, asset downloads, platform-browser packaging and the `mermaid-render setup` command.

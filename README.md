@@ -95,7 +95,7 @@ The `render_mermaid` tool accepts either `source` or `input_path` (`.mmd`/`.merm
 uv sync --locked
 uv run pytest -q
 uv run mermaid-render examples/class.mmd -o /tmp/class.vsdx
-uv build --wheel --out-dir dist/pypi
+uv build --out-dir dist/pypi
 uv run python scripts/check_distributions.py dist/pypi
 uv run python scripts/test_wheel_install.py dist/pypi/*.whl
 ```
@@ -104,7 +104,7 @@ uv run python scripts/test_wheel_install.py dist/pypi/*.whl
 
 Implementation: `renderer.py`/`renderer.js` run pinned Pele; `svg.py` reads static SVG geometry and text; `capture.py` maps semantic graphs; `semantic.py`, `sequence.py`, and `vsdx.py` write Visio.
 
-To release, update the project version, run `uv lock`, commit, and push the matching `v<version>` tag. The workflow validates the tag, tests the wheel on Linux, Windows, and macOS, publishes the universal wheel to PyPI through Trusted Publishing, and attaches that same wheel to the GitHub Release. No release is published by a branch push.
+To release, update the project version, run `uv lock`, commit, and push the matching `v<version>` tag. The workflow validates the tag, tests the wheel on Linux, Windows, and macOS, publishes the universal wheel and source archive to PyPI through Trusted Publishing, and attaches both files to the GitHub Release. No release is published by a branch push.
 
 ## License
 
