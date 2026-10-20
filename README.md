@@ -95,16 +95,16 @@ The `render_mermaid` tool accepts either `source` or `input_path` (`.mmd`/`.merm
 uv sync --locked
 uv run pytest -q
 uv run mermaid-render examples/class.mmd -o /tmp/class.vsdx
-uv build --out-dir dist/pypi
+uv build --wheel --out-dir dist/pypi
 uv run python scripts/check_distributions.py dist/pypi
 uv run python scripts/test_wheel_install.py dist/pypi/*.whl
 ```
 
-`test_wheel_install.py --wheelhouse PATH WHEEL` installs entirely from local wheels. Its smoke test renders SVG/PNG and all four connected VSDX types with network/subprocess calls blocked and an empty `PATH`. CI runs the suite and installed-wheel smoke test on Linux, Windows, and macOS with Python 3.10 and 3.13.
+`test_wheel_install.py WHEEL` installs the wheel and its dependencies in an isolated environment. Its smoke test renders SVG/PNG and all four connected VSDX types with network/subprocess calls blocked and an empty `PATH`. CI runs the suite and installed-wheel smoke test on Linux, Windows, and macOS with Python 3.10 and 3.14.
 
 Implementation: `renderer.py`/`renderer.js` run pinned Pele; `svg.py` reads static SVG geometry and text; `capture.py` maps semantic graphs; `semantic.py`, `sequence.py`, and `vsdx.py` write Visio.
 
-To release, update the project version, run `uv lock`, commit, and push the matching `v<version>` tag. The workflow validates the tag, tests native dependencies and offline installs, publishes the wrapper to PyPI through Trusted Publishing, and attaches distributions/offline wheelhouses to GitHub Releases. No release is published by a branch push.
+To release, update the project version, run `uv lock`, commit, and push the matching `v<version>` tag. The workflow validates the tag, tests the wheel on Linux, Windows, and macOS, publishes the universal wheel to PyPI through Trusted Publishing, and attaches that same wheel to the GitHub Release. No release is published by a branch push.
 
 ## License
 

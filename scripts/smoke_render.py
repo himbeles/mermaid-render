@@ -1,4 +1,4 @@
-"""Verify an installed wheel offline, without browsers, Node, or executable lookup."""
+"""Verify installed-wheel rendering without network or executable access."""
 
 import os
 from io import BytesIO
@@ -46,5 +46,5 @@ except ValueError as exc:
 else:
     raise AssertionError("Unsupported format was accepted")
 print(
-    "Offline wheel smoke test passed: SVG/PNG and all four connected VSDX types; no network, Node, browser, or subprocess."
+    "Installed-wheel rendering smoke test passed: SVG/PNG and all four connected VSDX types; no network, Node, browser, or subprocess."
 )

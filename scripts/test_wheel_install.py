@@ -1,4 +1,4 @@
-"""Install the universal wheel in isolation and run the browser-free offline smoke test."""
+"""Install the universal wheel in isolation and run the rendering smoke test."""
 
 import argparse
 import os
@@ -11,14 +11,9 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("wheel", type=Path)
-    parser.add_argument(
-        "--wheelhouse",
-        type=Path,
-        help="Install dependencies entirely offline from these wheels",
-    )
     opts = parser.parse_args()
     wheel = opts.wheel.resolve()
-    script = Path(__file__).with_name("smoke_offline.py").resolve()
+    script = Path(__file__).with_name("smoke_render.py").resolve()
     with tempfile.TemporaryDirectory() as d:
         dest = Path(d) / "environment"
         subprocess.run(
@@ -26,8 +21,6 @@ def main():
         )
         exe = dest / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         args = ["uv", "pip", "install", "--python", str(exe), str(wheel)]
-        if opts.wheelhouse:
-            args += ["--no-index", "--find-links", str(opts.wheelhouse.resolve())]
         subprocess.run(args, check=True)
         env = os.environ.copy()
         env.pop("PYTHONPATH", None)
